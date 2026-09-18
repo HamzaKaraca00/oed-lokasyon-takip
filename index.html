@@ -174,21 +174,21 @@
     border:none;border-radius:6px;padding:6px 8px;font-size:11.5px;font-weight:600;cursor:pointer;
   }
 
-  /* ---- Cihaz listesi (masaüstünde normal panel, mobilde bottom-sheet) ---- */
+  /* ---- Cihaz listesi (masaüstünde ince şerit, mobilde bottom-sheet) ---- */
   #sheet{
     background:#fff;border-top:1px solid #e2e8f0;flex-shrink:0;
   }
   .sheet-handle{display:none;}
   #sheet-list-header{
-    padding:10px 16px;font-size:12px;font-weight:700;color:#475569;
+    padding:6px 14px;font-size:11px;font-weight:700;color:#475569;
     letter-spacing:.02em;position:sticky;top:0;background:#fff;
     display:flex;align-items:center;justify-content:space-between;cursor:pointer;
-    border-bottom:1px solid #f1f5f9;
+    border-bottom:1px solid #f1f5f9;min-height:36px;
   }
   #sheet-list-header .chevron{font-size:11px;color:#94a3b8;transition:transform .2s ease;}
   #sheet-list-header.collapsed .chevron{transform:rotate(-90deg);}
-  .sheet-body{max-height:34vh;overflow-y:auto;transition:max-height .22s ease;}
-  .sheet-body.list-collapsed{max-height:0;overflow:hidden;}
+  .sheet-body{max-height:28vh;overflow-y:auto;transition:max-height .22s ease;}
+  .sheet-body.list-collapsed{max-height:0;overflow:hidden;border:none;padding:0;margin:0;}
 
   .device-row{
     display:flex;align-items:center;gap:12px;
@@ -290,19 +290,28 @@
 
     #sheet{
       position:fixed;left:0;right:0;bottom:0;z-index:900;
-      border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.18);
+      border-radius:14px 14px 0 0;box-shadow:0 -3px 16px rgba(0,0,0,.16);
       padding-bottom:env(safe-area-inset-bottom);
       transition:transform .25s ease;
     }
     .sheet-handle{
-      display:flex;flex-direction:column;align-items:center;
-      padding:10px 16px 8px;cursor:grab;touch-action:none;
+      display:flex;flex-direction:row;align-items:center;
+      gap:10px;
+      padding:6px 12px;
+      min-height:40px;
+      cursor:grab;touch-action:none;
     }
-    .handle-bar{width:40px;height:5px;border-radius:3px;background:#cbd5e1;margin-bottom:8px;}
-    .sheet-summary{width:100%;text-align:left;}
-    .s-line1{font-size:12px;font-weight:700;color:#475569;}
-    .s-line2{font-size:14px;font-weight:700;color:var(--ink);margin-top:2px;}
-    .sheet-body{max-height:58vh;}
+    .handle-bar{
+      width:28px;height:4px;border-radius:2px;background:#cbd5e1;
+      flex-shrink:0;margin:0;
+    }
+    .sheet-summary{flex:1;min-width:0;text-align:left;}
+    .s-line1{
+      font-size:12px;font-weight:600;color:#334155;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    }
+    .s-line2{display:none;} /* kapalı şeritte tek satır */
+    .sheet-body{max-height:50vh;}
     #sheet-list-header{display:none;}
 
     .detail-panel{
@@ -366,8 +375,8 @@
     <div class="sheet-handle" id="sheet-handle">
       <div class="handle-bar"></div>
       <div class="sheet-summary">
-        <div class="s-line1">↑ <span id="summary-count">—</span> Cihaz</div>
-        <div class="s-line2" id="summary-nearest">Konum bekleniyor…</div>
+        <div class="s-line1"><span id="summary-count">—</span> cihaz · <span id="summary-nearest">Konum bekleniyor…</span></div>
+        <div class="s-line2" aria-hidden="true"></div>
       </div>
     </div>
     <div id="sheet-list-header"><span>CİHAZLAR — MESAFEYE GÖRE SIRALI</span><span class="chevron">▼</span></div>
@@ -995,11 +1004,11 @@ function updateSheetSummary(sorted) {
   const nearestEl = document.getElementById('summary-nearest');
   const nearestLocated = sorted.find(d => d.distance != null);
   if (!sorted.length) {
-    nearestEl.textContent = 'Cihaz verisi yok';
+    nearestEl.textContent = 'veri yok';
   } else if (!nearestLocated) {
-    nearestEl.textContent = 'Konumlu cihaz yok';
+    nearestEl.textContent = 'konum yok';
   } else {
-    nearestEl.textContent = `En yakın: ${nearestLocated.name} — ${formatDistance(nearestLocated.distance)}`;
+    nearestEl.textContent = `${nearestLocated.name} ${formatDistance(nearestLocated.distance)}`;
   }
 }
 
@@ -1196,7 +1205,7 @@ function startGeolocationWatch() {
 /* ============================================================
    MOBİL BOTTOM-SHEET (SÜRÜKLEME)
    ============================================================ */
-const COLLAPSED_VISIBLE_PX = 82;
+const COLLAPSED_VISIBLE_PX = 44; /* kapalıyken yalnızca ince tutamak şeridi */
 let sheetState = 'collapsed';
 let dragState = null;
 const sheetEl = () => document.getElementById('sheet');
