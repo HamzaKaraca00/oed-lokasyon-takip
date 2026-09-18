@@ -208,7 +208,7 @@
 
   /* ---- Cihaz detay paneli (masaüstü: sağ panel) ---- */
   .detail-panel{
-    position:fixed;top:0;right:0;height:100%;width:340px;max-width:90vw;
+    position:fixed;top:var(--detail-top,0px);right:0;height:calc(100% - var(--detail-top,0px));width:340px;max-width:90vw;
     background:#fff;box-shadow:-4px 0 20px rgba(0,0,0,.18);
     transform:translateX(100%);transition:transform .25s ease;
     z-index:1300;display:flex;flex-direction:column;padding:16px;overflow-y:auto;
@@ -273,6 +273,11 @@
 
   /* ================== MOBİL DÜZEN ================== */
   @media (max-width:768px){
+    #status-strip{flex-wrap:nowrap;overflow:hidden;gap:8px;padding:6px 10px;font-size:11px;white-space:nowrap;}
+    #status-strip > *{flex-shrink:0;}
+    #status-strip #gps-status{flex:1 1 auto;flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+    #status-strip #last-update,#status-strip #gps-accuracy{display:none;}
+    #status-strip .reset-btn{margin-left:auto;}
     #banner{padding:7px 10px;gap:8px;}
     .banner-arrow{font-size:20px;}
     #banner .device-name{font-size:13.5px;}
@@ -1042,10 +1047,22 @@ function openDetailPanel(id) {
   if (!device) { showToast('Cihaz bulunamadı.'); return; }
   currentDetailId = id;
   renderDetailPanel(device, latestDistances[id] ?? null);
+  positionDetailPanel();
+  // Mobilde detay paneli ve liste aynı alanı kullanır; birlikte açık kalmasın
+  if (isMobileLayout() && sheetState === 'expanded') applySheetState('collapsed', true);
   const panel = document.getElementById('detail-panel');
   panel.classList.add('open');
   panel.setAttribute('aria-hidden', 'false');
 }
+
+/* Masaüstünde sağ panel, üstteki kırmızı başlık + durum şeridinin ÜZERİNE binmesin */
+function positionDetailPanel() {
+  const wrap = document.getElementById('map-wrap');
+  if (!wrap) return;
+  const top = isMobileLayout() ? 0 : Math.max(0, Math.round(wrap.getBoundingClientRect().top));
+  document.documentElement.style.setProperty('--detail-top', top + 'px');
+}
+window.addEventListener('resize', positionDetailPanel);
 
 function closeDetailPanel() {
   currentDetailId = null;
@@ -1217,7 +1234,9 @@ function collapsedOffsetPx() {
   return Math.max(0, measureSheetHeight() - COLLAPSED_VISIBLE_PX);
 }
 function applySheetState(state, animate) {
+  const wasExpanded = sheetState === 'expanded';
   sheetState = state;
+  if (state === 'expanded' && !wasExpanded) closeDetailPanel();
   const sheet = sheetEl();
   sheet.style.transition = animate ? 'transform .25s ease' : 'none';
   const offset = state === 'collapsed' ? collapsedOffsetPx() : 0;
@@ -1407,8 +1426,14 @@ function wireListToggle() {
   const header = document.getElementById('sheet-list-header');
   const toggleBtn = document.getElementById('list-toggle-btn');
 
-  header.addEventListener('click', () => setListOpen(!isListOpen()));
-  toggleBtn.addEventListener('click', () => setListOpen(!isListOpen()));
+  // Liste AÇILIRKEN sağdaki detay paneli otomatik kapanır
+  const toggleList = () => {
+    const willOpen = !isListOpen();
+    if (willOpen) closeDetailPanel();
+    setListOpen(willOpen);
+  };
+  header.addEventListener('click', toggleList);
+  toggleBtn.addEventListener('click', toggleList);
 
   // Görünüm masaüstü/mobil arası değiştiğinde buton metnini senkron tut
   window.addEventListener('resize', () => setListOpen(isListOpen()));
