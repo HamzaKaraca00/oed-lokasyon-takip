@@ -37,42 +37,43 @@
   html,body{height:100%;margin:0;background:var(--paper);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden;}
   #app{height:100vh;display:flex;flex-direction:column;}
 
-  /* ---- Acil durum banner ---- */
+  /* ---- Birleşik üst başlık (cihaz + yön) ---- */
   #banner{
     background:linear-gradient(180deg,var(--alert) 0%, var(--alert-dark) 100%);
     color:#fff;
-    padding:12px 16px;
-    display:flex;
-    align-items:center;
-    gap:14px;
-    box-shadow:0 4px 18px rgba(157,15,25,.45);
+    padding:0;
     z-index:1000;
     position:relative;
     flex-shrink:0;
+    box-shadow:0 4px 18px rgba(157,15,25,.45);
   }
   #banner.pulse{animation:pulseGlow 1.8s ease-in-out infinite;}
   @keyframes pulseGlow{
     0%,100%{box-shadow:0 4px 18px rgba(157,15,25,.45);}
     50%{box-shadow:0 4px 30px rgba(225,29,42,.75);}
   }
-  .heart-icon{width:30px;height:30px;flex-shrink:0;}
-  #banner .label{font-size:11px;letter-spacing:.04em;opacity:.85;margin-bottom:2px;}
-  #banner .device-name{font-size:18px;font-weight:700;line-height:1.15;}
-  #banner .distance-wrap{margin-left:auto;text-align:right;flex-shrink:0;}
-  #banner .distance-num{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1;white-space:nowrap;}
-
-  #direction-bar{
-    background:var(--ink);
-    color:#fff;
+  .banner-main{
     display:flex;
     align-items:center;
-    gap:14px;
-    padding:10px 16px;
-    flex-shrink:0;
-    border-bottom:1px solid #1f2f4d;
+    gap:12px;
+    padding:10px 14px 8px;
+  }
+  .heart-icon{width:28px;height:28px;flex-shrink:0;}
+  #banner .label{font-size:10px;letter-spacing:.04em;opacity:.85;margin-bottom:1px;}
+  #banner .device-name{font-size:16px;font-weight:700;line-height:1.15;}
+  #banner .distance-wrap{margin-left:auto;text-align:right;flex-shrink:0;}
+  #banner .distance-num{font-family:var(--mono);font-size:20px;font-weight:700;line-height:1;white-space:nowrap;}
+
+  #direction-bar{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:6px 14px 10px;
+    background:rgba(0,0,0,.22);
+    border-top:1px solid rgba(255,255,255,.12);
   }
   .direction-arrow-big{
-    font-size:30px;
+    font-size:26px;
     line-height:1;
     flex-shrink:0;
     transition:transform .3s ease;
@@ -80,8 +81,8 @@
     color:#93c5fd;
   }
   .direction-text{flex:1;min-width:0;}
-  .direction-main{font-size:15px;font-weight:700;}
-  .direction-sub{font-size:12px;opacity:.85;font-family:var(--mono);margin-top:2px;}
+  .direction-main{font-size:13px;font-weight:700;}
+  .direction-sub{font-size:11px;opacity:.9;font-family:var(--mono);margin-top:1px;}
 
   /* ---- Durum şeridi ---- */
   #status-strip{
@@ -109,14 +110,18 @@
   #map{position:absolute;top:0;left:0;right:0;bottom:0;}
 
   .map-controls{
-    position:absolute;top:12px;right:12px;z-index:650;
+    position:absolute;top:12px;right:12px;bottom:12px;z-index:650;
     display:flex;flex-direction:column;gap:8px;
+    max-height:calc(100% - 24px);
+    pointer-events:none; /* boş alan haritayı sürüklesin */
   }
+  .map-controls > *{pointer-events:auto;}
   .map-btn{
     background:#fff;border:1px solid #e2e8f0;border-radius:10px;
     padding:10px 14px;font-size:13px;font-weight:600;color:var(--ink);
     box-shadow:0 2px 8px rgba(0,0,0,.18);cursor:pointer;
     min-height:42px;white-space:nowrap;text-align:left;
+    flex-shrink:0;
   }
   .map-btn:active{background:#f1f5f9;}
 
@@ -124,9 +129,23 @@
     width:42px;height:42px;padding:0;
     display:flex;align-items:center;justify-content:center;
     font-size:19px;align-self:flex-end;
+    flex-shrink:0;
   }
-  .map-controls-buttons{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+  .map-controls-buttons{
+    display:flex;flex-direction:column;gap:8px;
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+    overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
+    padding-bottom:4px;
+    scrollbar-width:thin;
+    scrollbar-color:#94a3b8 transparent;
+  }
   .map-controls-buttons.hidden{display:none;}
+  .map-controls-buttons::-webkit-scrollbar{width:4px;}
+  .map-controls-buttons::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:4px;}
 
   /* Cihaz pini (durum rengine göre) */
   .oed-pin{
@@ -255,13 +274,14 @@
 
   /* ================== MOBİL DÜZEN ================== */
   @media (max-width:768px){
-    #banner{padding:10px 12px;gap:10px;}
-    #banner .device-name{font-size:15px;}
-    #banner .distance-num{font-size:20px;}
-    #direction-bar{padding:9px 12px;gap:10px;}
-    .direction-arrow-big{font-size:28px;}
-    .direction-main{font-size:14px;}
-    .map-controls{top:10px;right:10px;}
+    .banner-main{padding:9px 12px 6px;gap:10px;}
+    #banner .device-name{font-size:14px;}
+    #banner .distance-num{font-size:18px;}
+    #direction-bar{padding:5px 12px 8px;gap:8px;}
+    .direction-arrow-big{font-size:24px;}
+    .direction-main{font-size:13px;}
+    .direction-sub{font-size:11px;}
+    .map-controls{top:8px;right:8px;bottom:8px;max-height:calc(100% - 16px);}
     .map-btn{padding:12px 14px;font-size:14px;min-height:46px;}
     .toggle-btn{width:46px;height:46px;font-size:20px;}
     .device-row{padding:14px 16px;min-height:56px;gap:14px;}
@@ -301,27 +321,27 @@
 <body>
 <div id="app">
 
-  <!-- ACİL DURUM BANNER -->
+  <!-- BİRLEŞİK ÜST: cihaz + yön -->
   <div id="banner">
-    <svg class="heart-icon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 21s-6.5-4.35-9.5-8.5C.5 9.5 1.8 5.5 5.5 4.5c2.1-.6 4 .3 6.5 2.7 2.5-2.4 4.4-3.3 6.5-2.7 3.7 1 5 5 3 8C18.5 16.65 12 21 12 21z"/>
-      <path d="M4 12h3l1.5-3 2 6 1.5-3H21"/>
-    </svg>
-    <div>
-      <div class="label" id="banner-label">EN YAKIN OED CİHAZI</div>
-      <div class="device-name" id="banner-device-name">Konum bekleniyor…</div>
+    <div class="banner-main">
+      <svg class="heart-icon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 21s-6.5-4.35-9.5-8.5C.5 9.5 1.8 5.5 5.5 4.5c2.1-.6 4 .3 6.5 2.7 2.5-2.4 4.4-3.3 6.5-2.7 3.7 1 5 5 3 8C18.5 16.65 12 21 12 21z"/>
+        <path d="M4 12h3l1.5-3 2 6 1.5-3H21"/>
+      </svg>
+      <div style="min-width:0;flex:1;">
+        <div class="label" id="banner-label">EN YAKIN OED CİHAZI</div>
+        <div class="device-name" id="banner-device-name">Konum bekleniyor…</div>
+      </div>
+      <div class="distance-wrap">
+        <div class="distance-num" id="banner-distance">—</div>
+      </div>
     </div>
-    <div class="distance-wrap">
-      <div class="distance-num" id="banner-distance">—</div>
-    </div>
-  </div>
-
-  <!-- YÖN ŞERİDİ -->
-  <div id="direction-bar">
-    <span id="direction-arrow" class="direction-arrow-big">▲</span>
-    <div class="direction-text">
-      <div class="direction-main" id="direction-label">Yön hesaplanıyor…</div>
-      <div class="direction-sub" id="banner-route-info">Rota hesaplanıyor…</div>
+    <div id="direction-bar">
+      <span id="direction-arrow" class="direction-arrow-big">▲</span>
+      <div class="direction-text">
+        <div class="direction-main" id="direction-label">Yön hesaplanıyor…</div>
+        <div class="direction-sub" id="banner-route-info">Rota hesaplanıyor…</div>
+      </div>
     </div>
   </div>
 
@@ -911,7 +931,11 @@ function initMap() {
   });
 
   // Butonların harita sürüklemesini tetiklemesini önle
-  L.DomEvent.disableClickPropagation(document.querySelector('.map-controls'));
+  const controlsEl = document.querySelector('.map-controls');
+  if (controlsEl) {
+    L.DomEvent.disableClickPropagation(controlsEl);
+    L.DomEvent.disableScrollPropagation(controlsEl);
+  }
 }
 
 function popupHtml(device, distance) {
