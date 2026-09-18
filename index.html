@@ -37,52 +37,51 @@
   html,body{height:100%;margin:0;background:var(--paper);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden;}
   #app{height:100vh;display:flex;flex-direction:column;}
 
-  /* ---- Birleşik üst başlık (cihaz + yön) ---- */
+  /* ---- Tek satır üst başlık (cihaz + mesafe + yön özeti) ---- */
   #banner{
     background:linear-gradient(180deg,var(--alert) 0%, var(--alert-dark) 100%);
     color:#fff;
-    padding:0;
+    padding:8px 12px;
     z-index:1000;
     position:relative;
     flex-shrink:0;
-    box-shadow:0 4px 18px rgba(157,15,25,.45);
-  }
-  #banner.pulse{animation:pulseGlow 1.8s ease-in-out infinite;}
-  @keyframes pulseGlow{
-    0%,100%{box-shadow:0 4px 18px rgba(157,15,25,.45);}
-    50%{box-shadow:0 4px 30px rgba(225,29,42,.75);}
-  }
-  .banner-main{
-    display:flex;
-    align-items:center;
-    gap:12px;
-    padding:10px 14px 8px;
-  }
-  .heart-icon{width:28px;height:28px;flex-shrink:0;}
-  #banner .label{font-size:10px;letter-spacing:.04em;opacity:.85;margin-bottom:1px;}
-  #banner .device-name{font-size:16px;font-weight:700;line-height:1.15;}
-  #banner .distance-wrap{margin-left:auto;text-align:right;flex-shrink:0;}
-  #banner .distance-num{font-family:var(--mono);font-size:20px;font-weight:700;line-height:1;white-space:nowrap;}
-
-  #direction-bar{
+    box-shadow:0 3px 14px rgba(157,15,25,.4);
     display:flex;
     align-items:center;
     gap:10px;
-    padding:6px 14px 10px;
-    background:rgba(0,0,0,.22);
-    border-top:1px solid rgba(255,255,255,.12);
   }
-  .direction-arrow-big{
-    font-size:26px;
+  #banner.pulse{animation:pulseGlow 1.8s ease-in-out infinite;}
+  @keyframes pulseGlow{
+    0%,100%{box-shadow:0 3px 14px rgba(157,15,25,.4);}
+    50%{box-shadow:0 3px 22px rgba(225,29,42,.7);}
+  }
+  .banner-arrow{
+    font-size:22px;
     line-height:1;
     flex-shrink:0;
     transition:transform .3s ease;
     transform-origin:50% 50%;
-    color:#93c5fd;
+    color:#bfdbfe;
   }
-  .direction-text{flex:1;min-width:0;}
-  .direction-main{font-size:13px;font-weight:700;}
-  .direction-sub{font-size:11px;opacity:.9;font-family:var(--mono);margin-top:1px;}
+  .banner-info{flex:1;min-width:0;}
+  #banner .label{font-size:10px;letter-spacing:.03em;opacity:.85;margin-bottom:1px;}
+  #banner .device-name{
+    font-size:14px;font-weight:700;line-height:1.2;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  #banner .banner-meta{
+    font-size:11px;opacity:.9;font-family:var(--mono);
+    margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  #banner .banner-meta .sep{opacity:.5;margin:0 4px;}
+  #banner .distance-wrap{margin-left:4px;text-align:right;flex-shrink:0;}
+  #banner .distance-num{font-family:var(--mono);font-size:18px;font-weight:700;line-height:1;white-space:nowrap;}
+
+  /* Eski yön şeridi kaldırıldı — id'ler banner içinde tutuluyor */
+  #direction-bar{display:contents;}
+  .direction-text{display:contents;}
+  .direction-main,.direction-sub{display:inline;}
+  .heart-icon{display:none;}
 
   /* ---- Durum şeridi ---- */
   #status-strip{
@@ -274,13 +273,11 @@
 
   /* ================== MOBİL DÜZEN ================== */
   @media (max-width:768px){
-    .banner-main{padding:9px 12px 6px;gap:10px;}
-    #banner .device-name{font-size:14px;}
-    #banner .distance-num{font-size:18px;}
-    #direction-bar{padding:5px 12px 8px;gap:8px;}
-    .direction-arrow-big{font-size:24px;}
-    .direction-main{font-size:13px;}
-    .direction-sub{font-size:11px;}
+    #banner{padding:7px 10px;gap:8px;}
+    .banner-arrow{font-size:20px;}
+    #banner .device-name{font-size:13.5px;}
+    #banner .distance-num{font-size:17px;}
+    #banner .banner-meta{font-size:10.5px;}
     .map-controls{top:8px;right:8px;bottom:8px;max-height:calc(100% - 16px);}
     .map-btn{padding:12px 14px;font-size:14px;min-height:46px;}
     .toggle-btn{width:46px;height:46px;font-size:20px;}
@@ -321,27 +318,20 @@
 <body>
 <div id="app">
 
-  <!-- BİRLEŞİK ÜST: cihaz + yön -->
+  <!-- Tek satır üst: ok + cihaz + yön/rota özeti + mesafe -->
   <div id="banner">
-    <div class="banner-main">
-      <svg class="heart-icon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 21s-6.5-4.35-9.5-8.5C.5 9.5 1.8 5.5 5.5 4.5c2.1-.6 4 .3 6.5 2.7 2.5-2.4 4.4-3.3 6.5-2.7 3.7 1 5 5 3 8C18.5 16.65 12 21 12 21z"/>
-        <path d="M4 12h3l1.5-3 2 6 1.5-3H21"/>
-      </svg>
-      <div style="min-width:0;flex:1;">
-        <div class="label" id="banner-label">EN YAKIN OED CİHAZI</div>
-        <div class="device-name" id="banner-device-name">Konum bekleniyor…</div>
-      </div>
-      <div class="distance-wrap">
-        <div class="distance-num" id="banner-distance">—</div>
+    <span id="direction-arrow" class="banner-arrow" aria-hidden="true">▲</span>
+    <div class="banner-info">
+      <div class="label" id="banner-label">EN YAKIN OED CİHAZI</div>
+      <div class="device-name" id="banner-device-name">Konum bekleniyor…</div>
+      <div class="banner-meta">
+        <span id="direction-label">Yön hesaplanıyor…</span>
+        <span class="sep">·</span>
+        <span id="banner-route-info">Rota hesaplanıyor…</span>
       </div>
     </div>
-    <div id="direction-bar">
-      <span id="direction-arrow" class="direction-arrow-big">▲</span>
-      <div class="direction-text">
-        <div class="direction-main" id="direction-label">Yön hesaplanıyor…</div>
-        <div class="direction-sub" id="banner-route-info">Rota hesaplanıyor…</div>
-      </div>
+    <div class="distance-wrap">
+      <div class="distance-num" id="banner-distance">—</div>
     </div>
   </div>
 
