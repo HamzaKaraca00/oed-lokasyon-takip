@@ -437,6 +437,30 @@ window.addEventListener('unhandledrejection', function (e) {
     .device-row .name{font-size:13.5px;}
     .device-row .dist{font-size:14px;}
   }
+
+  /* ---- OED kullanım videosu ---- */
+  .map-btn-video{background:#0f766e !important;color:#fff !important;border-color:#115e59 !important;}
+  .video-modal{
+    position:fixed;inset:0;z-index:2500;display:flex;align-items:center;justify-content:center;
+    background:rgba(2,6,23,.88);
+    padding:calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+  }
+  .video-modal[hidden]{display:none;}
+  .video-card{width:min(100%,920px);display:flex;flex-direction:column;gap:10px;}
+  .video-head{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#fff;font-weight:700;font-size:15px;}
+  .video-close{
+    width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;
+    font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .video-close:active{background:rgba(255,255,255,.28);}
+  .video-card video{width:100%;max-height:72dvh;background:#000;border-radius:12px;display:block;}
+  .video-error{background:#7f1d1d;color:#fff;padding:10px 12px;border-radius:10px;font-size:13px;}
+  @media (max-height:500px){
+    .video-card{flex-direction:row;align-items:center;}
+    .video-head{flex-direction:column;align-items:flex-end;}
+    .video-head span{display:none;}
+    .video-card video{max-height:calc(100dvh - 24px);}
+  }
 </style>
 </head>
 <body>
@@ -482,6 +506,7 @@ window.addEventListener('unhandledrejection', function (e) {
         <button id="list-toggle-btn" class="map-btn" type="button">📋 Cihazları Göster</button>
         <button id="satellite-btn" class="map-btn" type="button">🛰️ Uydu Görünümü</button>
         <button id="compass-btn" class="map-btn" type="button">🧭 Pusulayı Aç</button>
+        <button id="oed-video-btn" class="map-btn map-btn-video" type="button">🎬 OED Kullanımı</button>
       </div>
     </div>
   </div>
@@ -521,6 +546,18 @@ window.addEventListener('unhandledrejection', function (e) {
 </div>
 
 <div id="toast" class="toast"></div>
+
+<!-- OED KULLANIM VİDEOSU -->
+<div id="video-modal" class="video-modal" role="dialog" aria-modal="true" aria-labelledby="video-title" hidden>
+  <div class="video-card">
+    <div class="video-head">
+      <span id="video-title">🎬 OED Nasıl Kullanılır?</span>
+      <button id="video-close-btn" class="video-close" type="button" aria-label="Kapat">✕</button>
+    </div>
+    <video id="oed-video" controls playsinline preload="none" poster="./media/oed-kullanim-poster.jpg"></video>
+    <div id="video-error" class="video-error" hidden>Video yüklenemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.</div>
+  </div>
+</div>
 
 <!-- PWA: Ana ekrana ekle bandı (Chrome/Edge beforeinstallprompt) -->
 <div id="pwa-install-bar" role="dialog" aria-label="Uygulamayı yükle">
@@ -984,6 +1021,39 @@ function closeControlsPanel() {
   const btn = document.getElementById('controls-toggle-btn');
   if (wrap) wrap.classList.add('hidden');
   if (btn) btn.textContent = '☰';
+}
+
+/* ---- OED kullanım videosu ---- */
+function wireVideoModal() {
+  const modal = document.getElementById('video-modal');
+  const video = document.getElementById('oed-video');
+  const errBox = document.getElementById('video-error');
+  const openBtn = document.getElementById('oed-video-btn');
+  const closeBtn = document.getElementById('video-close-btn');
+  if (!modal || !video || !openBtn) return;
+  const VIDEO_SRC = './media/oed-kullanim.mp4';
+
+  function openVideo() {
+    // Diğer paneller kapansın, sesli yönlendirme videoyla karışmasın
+    closeDetailPanel();
+    if (isMobileLayout()) closeControlsPanel();
+    try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (_) {}
+    errBox.hidden = true;
+    if (!video.getAttribute('src')) { video.src = VIDEO_SRC; video.load(); } // ilk açılışta yükle (veri tasarrufu)
+    modal.hidden = false;
+    const p = video.play();
+    if (p && p.catch) p.catch(() => {}); // otomatik oynatma engellenirse kullanıcı ▶'a basar
+  }
+  function closeVideo() {
+    video.pause();
+    modal.hidden = true;
+  }
+
+  openBtn.addEventListener('click', openVideo);
+  closeBtn.addEventListener('click', closeVideo);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeVideo(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) closeVideo(); });
+  video.addEventListener('error', () => { errBox.hidden = false; });
 }
 
 /* ---- Sağ üst kontrol butonlarını göster/gizle ---- */
@@ -1703,6 +1773,7 @@ async function boot() {
   wireSatelliteToggle();
   wireCompassButton();
   wireControlsToggle();
+  wireVideoModal();
   wireEmergencyControls();
   initSheetDrag();
   setListOpen(!isMobileLayout());
