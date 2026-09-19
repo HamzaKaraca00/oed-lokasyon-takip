@@ -1,0 +1,1740 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>İsdemir OED Acil Durum Konum Sistemi</title>
+
+<!-- PWA / mobil kurulum -->
+<meta name="theme-color" content="#e11d2a">
+<meta name="color-scheme" content="light">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="İsdemir OED">
+<meta name="application-name" content="İsdemir OED">
+<meta name="description" content="İsdemir sahasında en yakın OED cihazını bulun ve yol tarifi alın.">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/* Leaflet cdnjs'den yüklenemezse (kurumsal ağ/engel) yedek CDN'den dene */
+if (!window.L) {
+  document.write('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"><script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"><\/script>');
+}
+/* Beklenmeyen bir hata olursa boş/beyaz ekran yerine ekranda görünür bir uyarı göster */
+function oedShowFatal(text) {
+  if (!text || !document.body || document.getElementById('oed-fatal')) return;
+  var msg = /\bL is not defined\b/.test(text)
+    ? 'Harita kütüphanesi yüklenemedi. İnternet bağlantınızı veya ağ erişim engelini kontrol edin.'
+    : 'Hata: ' + text;
+  var box = document.createElement('div');
+  box.id = 'oed-fatal';
+  box.setAttribute('role', 'alert');
+  box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:60px;z-index:99999;background:#7f1d1d;color:#fff;font:13px/1.4 system-ui,sans-serif;padding:10px 12px;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.35)';
+  box.textContent = msg + '  (kapatmak için dokunun)';
+  box.onclick = function () { box.remove(); };
+  document.body.appendChild(box);
+}
+window.addEventListener('error', function (e) { if (e && e.message) oedShowFatal(e.message); });
+window.addEventListener('unhandledrejection', function (e) {
+  var r = e && e.reason; oedShowFatal(r && (r.message || String(r)));
+});
+</script>
+
+<style>
+  :root{
+    --ink:#0f172a;
+    --alert:#e11d2a;
+    --alert-dark:#9c0f1c;
+    --ok:#16a34a;
+    --warn:#d97706;
+    --paper:#f4f6f9;
+    --mono: 'Courier New', ui-monospace, monospace;
+  }
+  /* Tailwind CDN kaldırıldı; onun uyguladığı temel sıfırlamaların aynısı burada */
+  *,::before,::after{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb;}
+  html{line-height:1.5;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+  button{font-family:inherit;font-size:100%;line-height:inherit;color:inherit;margin:0;padding:0;background-color:transparent;background-image:none;-webkit-appearance:button;}
+  img,svg,video,canvas{display:block;vertical-align:middle;}
+  h1,h2,h3,h4,p,ul,ol{margin:0;}
+  html,body{height:100%;margin:0;background:var(--paper);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden;}
+  #app{height:100vh;height:100dvh;display:flex;flex-direction:column;}
+  html,body{overscroll-behavior:none;-webkit-tap-highlight-color:transparent;}
+  button{touch-action:manipulation;}
+
+  /* ---- Tek satır üst başlık (cihaz + mesafe + yön özeti) ---- */
+  #banner{
+    background:linear-gradient(180deg,var(--alert) 0%, var(--alert-dark) 100%);
+    color:#fff;
+    padding:8px 12px;
+    z-index:1000;
+    position:relative;
+    flex-shrink:0;
+    box-shadow:0 3px 14px rgba(157,15,25,.4);
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  #banner.pulse{animation:pulseGlow 1.8s ease-in-out infinite;}
+  @keyframes pulseGlow{
+    0%,100%{box-shadow:0 3px 14px rgba(157,15,25,.4);}
+    50%{box-shadow:0 3px 22px rgba(225,29,42,.7);}
+  }
+  .banner-arrow{
+    font-size:22px;
+    line-height:1;
+    flex-shrink:0;
+    transition:transform .3s ease;
+    transform-origin:50% 50%;
+    color:#bfdbfe;
+  }
+  .banner-info{flex:1;min-width:0;}
+  #banner .label{font-size:10px;letter-spacing:.03em;opacity:.85;margin-bottom:1px;}
+  #banner .device-name{
+    font-size:14px;font-weight:700;line-height:1.2;
+    white-space:normal;overflow-wrap:anywhere;word-break:normal;
+    display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;
+  }
+  #banner .banner-meta{
+    font-size:11px;opacity:.9;font-family:var(--mono);
+    margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  #banner .banner-meta .sep{opacity:.5;margin:0 4px;}
+  #banner .distance-wrap{margin-left:4px;text-align:right;flex-shrink:0;}
+  #banner .distance-num{font-family:var(--mono);font-size:18px;font-weight:700;line-height:1;white-space:nowrap;}
+
+  /* Eski yön şeridi kaldırıldı — id'ler banner içinde tutuluyor */
+  #direction-bar{display:contents;}
+  .direction-text{display:contents;}
+  .direction-main,.direction-sub{display:inline;}
+  .heart-icon{display:none;}
+
+  /* ---- Durum şeridi ---- */
+  .brand-tag{font-weight:800;letter-spacing:.08em;color:#fff;padding-right:10px;border-right:1px solid rgba(255,255,255,.25);}
+  #status-strip{
+    background:var(--ink);
+    color:#c7d2e0;
+    font-size:12px;
+    padding:6px 16px;
+    display:flex;
+    gap:14px;
+    align-items:center;
+    flex-wrap:wrap;
+    flex-shrink:0;
+  }
+  #status-strip .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;}
+  .dot-live{background:var(--ok);box-shadow:0 0 6px var(--ok);}
+  .dot-off{background:#6b7280;}
+  .reset-btn{
+    background:#1e293b;color:#fff;border:1px solid #334155;border-radius:6px;
+    padding:4px 10px;font-size:11px;cursor:pointer;
+  }
+  .reset-btn:active{background:#334155;}
+
+  /* ---- Harita alanı ---- */
+  #map-wrap{position:relative;flex:1;min-height:0;}
+  #map{position:absolute;top:0;left:0;right:0;bottom:0;}
+
+  .map-controls{
+    position:absolute;top:12px;right:12px;bottom:12px;z-index:650;
+    display:flex;flex-direction:column;gap:8px;
+    max-height:calc(100% - 24px);
+    pointer-events:none; /* boş alan haritayı sürüklesin */
+  }
+  .map-controls > *{pointer-events:auto;}
+  .map-btn{
+    background:#fff;border:1px solid #e2e8f0;border-radius:10px;
+    padding:10px 14px;font-size:13px;font-weight:600;color:var(--ink);
+    box-shadow:0 2px 8px rgba(0,0,0,.18);cursor:pointer;
+    min-height:42px;white-space:nowrap;text-align:left;
+    flex-shrink:0;
+  }
+  .map-btn:active{background:#f1f5f9;}
+
+  .toggle-btn{
+    width:42px;height:42px;padding:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:19px;align-self:flex-end;
+    flex-shrink:0;
+  }
+  .map-controls-buttons{
+    display:flex;flex-direction:column;gap:8px;
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+    overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
+    padding-bottom:4px;
+    scrollbar-width:thin;
+    scrollbar-color:#94a3b8 transparent;
+  }
+  .map-controls-buttons.hidden{display:none;}
+  .map-controls-buttons::-webkit-scrollbar{width:4px;}
+  .map-controls-buttons::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:4px;}
+
+  /* Cihaz pini (durum rengine göre) */
+  .oed-pin{
+    border:3px solid #fff;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-weight:800;font-size:13px;
+    box-shadow:0 2px 6px rgba(0,0,0,.35);font-family:var(--mono);
+  }
+  .oed-pin.target{box-shadow:0 0 0 4px rgba(255,255,255,.55), 0 2px 8px rgba(0,0,0,.4);}
+  .user-pin{
+    width:22px;height:22px;border-radius:50%;
+    background:#2563eb;border:3px solid #fff;
+    box-shadow:0 0 0 4px rgba(37,99,235,.3), 0 2px 6px rgba(0,0,0,.4);
+  }
+  .user-marker-wrap{transition:transform .35s linear;}
+
+  .leaflet-popup-content-wrapper{border-radius:8px;}
+  .popup-title{font-weight:700;font-size:14px;color:var(--ink);}
+  .popup-row{font-size:12.5px;color:#334155;margin-top:3px;}
+  .popup-dist{font-family:var(--mono);font-weight:700;color:var(--alert-dark);}
+  .status-pill{
+    display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:99px;
+    margin-top:6px;letter-spacing:.02em;color:#fff;
+  }
+  .popup-detail-btn{
+    display:block;margin-top:8px;width:100%;background:var(--ink);color:#fff;
+    border:none;border-radius:6px;padding:6px 8px;font-size:11.5px;font-weight:600;cursor:pointer;
+  }
+
+  /* ---- Cihaz listesi (masaüstünde ince şerit, mobilde bottom-sheet) ---- */
+  #sheet{
+    background:#fff;border-top:1px solid #e2e8f0;flex-shrink:0;
+  }
+  .sheet-handle{display:none;}
+  #sheet-list-header{
+    padding:6px 14px;font-size:11px;font-weight:700;color:#475569;
+    letter-spacing:.02em;position:sticky;top:0;background:#fff;
+    display:flex;align-items:center;justify-content:space-between;cursor:pointer;
+    border-bottom:1px solid #f1f5f9;min-height:36px;
+  }
+  #sheet-list-header .chevron{font-size:11px;color:#94a3b8;transition:transform .2s ease;}
+  #sheet-list-header.collapsed .chevron{transform:rotate(-90deg);}
+  .sheet-body{max-height:28vh;overflow-y:auto;transition:max-height .22s ease;}
+  .sheet-body.list-collapsed{max-height:0;overflow:hidden;border:none;padding:0;margin:0;}
+
+  .device-row{
+    display:flex;align-items:center;gap:12px;
+    padding:10px 16px;border-top:1px solid #f1f5f9;cursor:pointer;
+  }
+  .device-row:active{background:#f8fafc;}
+  .device-row .idx{
+    font-family:var(--mono);font-weight:700;color:#fff;
+    border-radius:6px;width:34px;height:34px;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;
+  }
+  .device-row .info{flex:1;min-width:0;}
+  .device-row .name{font-size:13.5px;font-weight:600;color:var(--ink);}
+  .device-row .loc{font-size:11.5px;color:#64748b;}
+  .device-row .dist{font-family:var(--mono);font-weight:700;font-size:14px;color:var(--ink);white-space:nowrap;}
+  .device-row.selected{background:#fef2f2;border-left:3px solid var(--alert);}
+
+  /* ---- Cihaz detay paneli (masaüstü: sağ panel) ---- */
+  .detail-panel{
+    position:fixed;top:var(--detail-top,0px);right:0;height:calc(100% - var(--detail-top,0px));width:340px;max-width:90vw;
+    background:#fff;box-shadow:-4px 0 20px rgba(0,0,0,.18);
+    transform:translateX(100%);transition:transform .25s ease, visibility 0s linear .25s;visibility:hidden;
+    z-index:1300;display:flex;flex-direction:column;padding:16px;overflow-y:auto;
+  }
+  .detail-panel.open{transform:translateX(0);visibility:visible;transition-delay:0s;}
+  .detail-header{display:flex;align-items:center;justify-content:space-between;}
+  .detail-title{font-size:16px;font-weight:700;color:var(--ink);}
+  .detail-close{background:#f1f5f9;border:none;border-radius:6px;width:30px;height:30px;font-size:14px;cursor:pointer;}
+  .detail-status-row{display:flex;align-items:center;gap:8px;margin:12px 0;font-size:13px;font-weight:600;color:var(--ink);}
+  .detail-status-dot{width:10px;height:10px;border-radius:50%;}
+  .detail-field{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px;gap:10px;}
+  .detail-field .flabel{color:#64748b;}
+  .detail-field .fvalue{font-weight:600;color:var(--ink);font-family:var(--mono);text-align:right;overflow-wrap:anywhere;min-width:0;}
+  .detail-field.full{grid-column:1 / -1;}
+  .detail-actions{display:flex;gap:8px;margin-top:14px;}
+  .detail-action-btn{
+    flex:1;padding:11px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;
+    font-size:13px;font-weight:600;cursor:pointer;
+  }
+  .detail-action-btn.primary{background:var(--alert);color:#fff;border-color:var(--alert-dark);}
+
+  /* ---- Toast (hata / bilgi mesajları) ---- */
+  .toast{
+    position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);
+    background:#1e293b;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;
+    box-shadow:0 4px 14px rgba(0,0,0,.3);opacity:0;pointer-events:none;
+    transition:opacity .2s ease, transform .2s ease;z-index:2000;max-width:86vw;text-align:center;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0);}
+
+  /* ---- PWA kurulum bandı ---- */
+  #pwa-install-bar{
+    display:none;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));
+    z-index:2100;background:#0f172a;color:#fff;border-radius:12px;
+    padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,.35);
+    align-items:center;gap:12px;
+  }
+  #pwa-install-bar.show{display:flex;}
+  #pwa-install-bar .pwa-text{flex:1;min-width:0;font-size:13px;line-height:1.35;}
+  #pwa-install-bar .pwa-text strong{display:block;font-size:14px;margin-bottom:2px;}
+  #pwa-install-btn{
+    flex-shrink:0;background:#e11d2a;color:#fff;border:none;border-radius:8px;
+    padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;min-height:44px;
+  }
+  #pwa-install-dismiss{
+    flex-shrink:0;background:transparent;color:#94a3b8;border:none;
+    width:36px;height:36px;font-size:18px;cursor:pointer;border-radius:8px;
+  }
+
+  /* ---- Sağ panel acil butonları ---- */
+  .map-btn-call{
+    background:#e11d2a !important;color:#fff !important;border-color:#9c0f1c !important;
+  }
+  .map-btn-call:active{background:#9c0f1c !important;}
+  .map-btn-voice{
+    background:#1e293b !important;color:#e2e8f0 !important;border-color:#334155 !important;
+  }
+  .map-btn-voice.on{
+    background:#166534 !important;color:#fff !important;border-color:#16a34a !important;
+  }
+  .device-row.no-loc{opacity:.72;}
+  .device-row .dist.no-loc-label{color:#9ca3af;font-size:12px;font-weight:600;}
+
+  /* ================== MOBİL DÜZEN ================== */
+  @media (max-width:768px), (max-height:500px) and (pointer:coarse){
+    #status-strip{flex-wrap:nowrap;overflow:hidden;gap:8px;padding:6px 10px;font-size:11px;white-space:nowrap;}
+    #status-strip > *{flex-shrink:0;}
+    #status-strip #gps-status{flex:1 1 auto;flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+    #status-strip #last-update,#status-strip #gps-accuracy{display:none;}
+    #status-strip .reset-btn{margin-left:auto;}
+    #banner{padding:7px 10px;gap:8px;}
+    .banner-arrow{font-size:20px;}
+    #banner .device-name{font-size:13.5px;}
+    #banner .distance-num{font-size:17px;}
+    #banner .banner-meta{font-size:10.5px;}
+    .map-controls{top:8px;right:8px;bottom:8px;max-height:calc(100% - 16px);}
+    .map-btn{padding:12px 14px;font-size:14px;min-height:46px;}
+    .toggle-btn{width:46px;height:46px;font-size:20px;}
+    .device-row{padding:14px 16px;min-height:56px;gap:14px;}
+    .device-row .idx{width:40px;height:40px;font-size:13px;}
+    .device-row .name{font-size:14.5px;}
+    .device-row .dist{font-size:15px;}
+    .detail-action-btn{padding:14px;font-size:14px;min-height:48px;}
+    .detail-close{width:40px;height:40px;font-size:16px;}
+
+    #sheet{
+      position:fixed;left:0;right:0;bottom:0;z-index:900;
+      border-radius:14px 14px 0 0;box-shadow:0 -3px 16px rgba(0,0,0,.16);
+      padding-bottom:env(safe-area-inset-bottom);
+      transition:transform .25s ease;
+    }
+    .sheet-handle{
+      display:flex;flex-direction:row;align-items:center;
+      gap:10px;
+      padding:6px 12px;
+      min-height:40px;
+      cursor:grab;touch-action:none;
+    }
+    .handle-bar{
+      width:28px;height:4px;border-radius:2px;background:#cbd5e1;
+      flex-shrink:0;margin:0;
+    }
+    .sheet-summary{flex:1;min-width:0;text-align:left;}
+    .s-line1{
+      font-size:12px;font-weight:600;color:#334155;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    }
+    .s-line2{display:none;} /* kapalı şeritte tek satır */
+    .sheet-body{max-height:50vh;}
+    #sheet-list-header{display:none;}
+
+    .detail-panel{
+      top:auto;left:0;right:0;width:100%;height:auto;max-height:72vh;
+      border-radius:16px 16px 0 0;transform:translateY(100%);
+      padding-bottom:calc(16px + env(safe-area-inset-bottom));
+      box-shadow:0 -4px 20px rgba(0,0,0,.2);
+    }
+    .detail-panel.open{transform:translateY(0);}
+  }
+
+  /* ================== MOBİL: HARİTAYA MAKSİMUM YER ================== */
+  @media (max-width:768px), (max-height:500px) and (pointer:coarse){
+    /* Üst başlık: çentik güvenli alan + ince */
+    #banner{padding:4px 10px 5px;padding-top:calc(4px + env(safe-area-inset-top));padding-left:calc(10px + env(safe-area-inset-left));padding-right:calc(10px + env(safe-area-inset-right));gap:8px;}
+    .banner-arrow{font-size:18px;}
+    #banner .label{font-size:9px;line-height:1.1;margin-bottom:0;}
+    #banner .device-name{font-size:13px;line-height:1.15;}
+    #banner .banner-meta{font-size:10px;margin-top:1px;}
+    #banner .distance-num{font-size:16px;}
+
+    /* Durum şeridi: tek ince satır */
+    #status-strip{padding:2px 10px;min-height:20px;font-size:10px;line-height:1.2;}
+    #status-strip .dot{width:6px;height:6px;margin-right:4px;}
+    #status-strip .brand-tag{padding-right:8px;font-size:9.5px;}
+    #status-strip .reset-btn{padding:1px 8px;font-size:10px;border-radius:5px;}
+
+    /* Sağdaki butonlar: alt şeridin üstünde kalsın */
+    .map-controls{top:6px;right:calc(6px + env(safe-area-inset-right));bottom:calc(var(--sheet-visible,44px) + 8px);max-height:none;transition:bottom .25s ease;}
+    .toggle-btn{width:40px;height:40px;font-size:18px;}
+    .map-btn{padding:9px 12px;font-size:13px;min-height:40px;}
+
+    /* Leaflet: yakınlaştırma butonları gereksiz (çift dokunma/çimdik var), atıf şeridin üstünde */
+    .leaflet-control-zoom{display:none;}
+    .leaflet-bottom{bottom:var(--sheet-visible,44px);transition:bottom .25s ease;}
+    .leaflet-control-attribution{font-size:9px;}
+
+    /* Alt liste */
+    .sheet-body{max-height:42dvh;}
+    .device-row{padding:9px 14px;min-height:50px;gap:12px;}
+    .device-row .idx{width:36px;height:36px;font-size:12px;}
+
+    /* Detay paneli: kompakt, iki sütun */
+    .detail-panel{max-height:56dvh;padding:10px 14px calc(12px + env(safe-area-inset-bottom));}
+    .detail-close{width:34px;height:34px;font-size:14px;}
+    .detail-status-row{margin:6px 0 4px;}
+    .detail-fields{display:grid;grid-template-columns:1fr 1fr;column-gap:16px;}
+    .detail-field{flex-direction:column;gap:1px;padding:5px 0;font-size:12px;}
+    .detail-field .fvalue{text-align:left;font-size:13px;}
+    .detail-actions{margin-top:8px;}
+    .detail-action-btn{padding:11px;min-height:44px;font-size:13.5px;}
+
+    .toast{bottom:calc(var(--sheet-visible,44px) + 12px);}
+  }
+  /* Yatay telefon: çok az dikey alan var */
+  @media (max-height:500px) and (pointer:coarse){
+    #banner .label{display:none;}
+    .detail-panel{left:auto;right:0;width:min(420px,60vw);max-height:calc(100dvh - 8px);border-radius:16px 0 0 0;}
+    .sheet-body{max-height:36dvh;}
+  }
+
+  /* ================== MOBİL: SON DOKUNUŞLAR ================== */
+  @media (max-width:768px), (max-height:500px) and (pointer:coarse){
+    /* Sayfa kaymasın / lastik efekti olmasın; uygulama gibi sabit dursun */
+    html,body{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;}
+    /* Butonlarda/başlıkta yanlışlıkla metin seçimi ve uzun basma menüsü olmasın */
+    .map-btn,#banner,.sheet-handle,.detail-action-btn,.detail-close,.reset-btn{
+      -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+    }
+    /* Parmakla rahat basılsın (min. 44px) */
+    .toggle-btn{width:44px;height:44px;}
+    .map-btn{min-height:44px;}
+    .detail-close{width:40px;height:40px;}
+    /* Çentikli / yatay ekran yan boşlukları */
+    #sheet{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);}
+    .detail-panel{padding-left:calc(14px + env(safe-area-inset-left));padding-right:calc(14px + env(safe-area-inset-right));overscroll-behavior:contain;}
+    .sheet-body{-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+  }
+  /* Çok dar telefonlar (≤360px) */
+  @media (max-width:360px){
+    #banner .device-name{font-size:12.5px;}
+    #banner .distance-num{font-size:15px;}
+    .map-btn{font-size:12.5px;padding:9px 10px;}
+    .device-row .name{font-size:13.5px;}
+    .device-row .dist{font-size:14px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Tek satır üst: ok + cihaz + yön/rota özeti + mesafe -->
+  <div id="banner">
+    <span id="direction-arrow" class="banner-arrow" aria-hidden="true">▲</span>
+    <div class="banner-info">
+      <div class="label" id="banner-label">EN YAKIN OED CİHAZI</div>
+      <div class="device-name" id="banner-device-name">Konum bekleniyor…</div>
+      <div class="banner-meta">
+        <span id="direction-label">Yön hesaplanıyor…</span>
+        <span class="sep">·</span>
+        <span id="banner-route-info">Rota hesaplanıyor…</span>
+      </div>
+    </div>
+    <div class="distance-wrap">
+      <div class="distance-num" id="banner-distance">—</div>
+    </div>
+  </div>
+
+  <!-- DURUM ŞERİDİ -->
+  <div id="status-strip">
+    <span class="brand-tag">İSDEMİR</span>
+    <span id="gps-status"><span class="dot dot-off"></span>GPS bağlantısı kuruluyor…</span>
+    <span id="gps-accuracy"></span>
+    <span>Toplam cihaz: <strong id="total-device-count">—</strong></span>
+    <span id="last-update">Son güncelleme: —</span>
+    <button id="reset-target-btn" class="reset-btn" style="display:none;">Otomatik moda dön (en yakın)</button>
+  </div>
+
+  <!-- HARİTA -->
+  <div id="map-wrap">
+    <div id="map"></div>
+    <div class="map-controls">
+      <button id="controls-toggle-btn" class="map-btn toggle-btn" type="button" aria-label="Butonları göster/gizle">☰</button>
+      <div class="map-controls-buttons" id="map-controls-buttons">
+        <button id="emergency-call-btn" class="map-btn map-btn-call" type="button" aria-label="Acil çağrı">📞 112 Ara</button>
+        <button id="voice-guide-btn" class="map-btn map-btn-voice" type="button" aria-label="Sesli yönlendirme">🔊 Sesli Yön</button>
+        <button id="locate-btn" class="map-btn" type="button">📍 Beni Bul</button>
+        <button id="nearest-btn" class="map-btn" type="button">★ En Yakın OED</button>
+        <button id="list-toggle-btn" class="map-btn" type="button">📋 Cihazları Göster</button>
+        <button id="satellite-btn" class="map-btn" type="button">🛰️ Uydu Görünümü</button>
+        <button id="compass-btn" class="map-btn" type="button">🧭 Pusulayı Aç</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CİHAZ LİSTESİ / BOTTOM-SHEET -->
+  <div id="sheet" class="sheet-collapsed">
+    <div class="sheet-handle" id="sheet-handle">
+      <div class="handle-bar"></div>
+      <div class="sheet-summary">
+        <div class="s-line1"><span id="summary-count">—</span> cihaz · <span id="summary-nearest">Konum bekleniyor…</span></div>
+        <div class="s-line2" aria-hidden="true"></div>
+      </div>
+    </div>
+    <div id="sheet-list-header"><span>İSDEMİR OED CİHAZLARI — MESAFEYE GÖRE SIRALI</span><span class="chevron">▼</span></div>
+    <div class="sheet-body" id="sheet-body">
+      <div id="device-list"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- CİHAZ DETAY PANELİ -->
+<div id="detail-panel" class="detail-panel" aria-hidden="true">
+  <div class="detail-header">
+    <div class="detail-title" id="detail-title">OED</div>
+    <button id="detail-close" class="detail-close" type="button" aria-label="Kapat">✕</button>
+  </div>
+  <div class="detail-status-row">
+    <span class="detail-status-dot" id="detail-status-dot"></span>
+    <span id="detail-status-label">—</span>
+  </div>
+  <div class="detail-fields" id="detail-fields"></div>
+  <div class="detail-actions">
+    <button id="detail-show-map" class="detail-action-btn" type="button">📍 Haritada Göster</button>
+    <button id="detail-route" class="detail-action-btn primary" type="button">🧭 Yol Tarifi</button>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- PWA: Ana ekrana ekle bandı (Chrome/Edge beforeinstallprompt) -->
+<div id="pwa-install-bar" role="dialog" aria-label="Uygulamayı yükle">
+  <div class="pwa-text">
+    <strong>İsdemir OED — Ana ekrana ekle</strong>
+    İnternet olmasa bile son cihaz listesine erişin
+  </div>
+  <button id="pwa-install-btn" type="button">Yükle</button>
+  <button id="pwa-install-dismiss" type="button" aria-label="Kapat">✕</button>
+</div>
+
+<script>
+/* ============================================================
+   MOCK VERİ KATMANI
+   İleride Supabase / PHP REST API entegrasyonu için bu bölüm
+   fetchDevices() fonksiyonu ile değiştirilebilir. Aşağıdaki
+   "devices" dizisinin şekli (id, name, lat, lng, status, zone)
+   API entegrasyonunda korunmalıdır. Bu yapı DEĞİŞTİRİLMEDİ.
+   ============================================================ */
+const FACTORY_CENTER = { lat: 36.738218, lng: 36.207058 }; // gerçek tesis koordinatlarının merkezi
+
+function generateMockDevices() {
+  // Excel listenizdeki (OED_Listesi_Guncel_18_9_2026) gerçek ve sabit cihaz konumları.
+  // Cihazlar sabit noktalarda olduğu için burada üretilen konumlar değişmez;
+  // API bağlandığında bu fonksiyon yerine gerçek endpoint kullanılacaktır.
+  return [
+    { id: 2,  name: "OED #2",  zone: "Genel Müdürlük Binası (A Kapı Girişi, Toplantı Salonları)", lat: 36.738563, lng: 36.216649, status: "active" },
+    { id: 8,  name: "OED #8",  zone: "Çelik Üretim Direktörlüğü Binası Giriş Katı", lat: 36.736939, lng: 36.210973, status: "active" },
+    { id: 10, name: "OED #10", zone: "Çelikhane Müdürlüğü (VAGG Tesisi Kumanda Odası)", lat: 36.738382, lng: 36.207711, status: "active" },
+    { id: 11, name: "OED #11", zone: "Çelikhane Müdürlüğü (Konvertör Kumanda Odası)", lat: 36.737492, lng: 36.208518, status: "active" },
+    { id: 14, name: "OED #14", zone: "Sıcak Haddehane Müdürlüğü (Pulpit Bobin Kumanda Odası)", lat: 36.744902, lng: 36.208170, status: "active" },
+    { id: 17, name: "OED #17", zone: "Sürekli Dökümler Müdürlüğü Slab Döküm Kodu Kumanda Odası", lat: 36.738976, lng: 36.210238, status: "active" },
+    { id: 20, name: "OED #20", zone: "Kangal Haddehanesi Müdürlüğü (Giyinme-Soyunma Odası)", lat: 36.743083, lng: 36.204762, status: "active" },
+    { id: 21, name: "OED #21", zone: "Sinter ve Hammadde Manipülasyon Müdürlüğü Binası Giriş Katı", lat: 36.736802, lng: 36.207039, status: "active" },
+    { id: 22, name: "OED #22", zone: "Sinter ve Hammadde Manipülasyon Müdürlüğü (OP3 Kumanda Odası)", lat: 36.735580, lng: 36.206252, status: "active" },
+    { id: 28, name: "OED #28", zone: "Nakliyat Müdürlüğü Giriş Katı", lat: 36.743264, lng: 36.201199, status: "active" },
+    { id: 29, name: "OED #29", zone: "Kok Müdürlüğü Giriş Katı", lat: 36.732492, lng: 36.207896, status: "active" },
+    { id: 31, name: "OED #31", zone: "Kok Müdürlüğü (Kumanda Odası Girişi, 2. Kat)", lat: 36.729281, lng: 36.211333, status: "active" },
+    { id: 37, name: "OED #37", zone: "Ambarlama ve Sevkiyat Müdürlüğü Giriş Katı", lat: 36.750447, lng: 36.210020, status: "active" },
+    { id: 38, name: "OED #38", zone: "Yüksek Fırınlar Müdürlüğü (1. YF Döküm Holü)", lat: 36.735790, lng: 36.210839, status: "active" },
+    { id: 42, name: "OED #42", zone: "Liman Müdürlüğü Binası Giriş Katı", lat: 36.732217, lng: 36.198164, status: "active" },
+    { id: 44, name: "OED #44", zone: "Laboratuvarlar Müdürlüğü (Numune Alma Başmühendisliği)", lat: 36.734993, lng: 36.198459, status: "active" },
+    { id: 46, name: "OED #46", zone: "Mekanik ve Yardımcı Atölyeler Müdürlüğü Giriş Katı", lat: 36.740509, lng: 36.201764, status: "active" },
+    { id: 50, name: "OED #50", zone: "Destek Hizmetleri Müdürlüğü (Palmiye Restaurant)", lat: null, lng: null, status: "no-location" }
+  ];
+}
+
+// Gerçek backend entegrasyonu için akış:
+//   [OED cihazı] -> [Üretici/URUK bulut platformu] -> [Sizin backend'iniz] -> bu sayfa
+// Backend, /api/oed-devices üzerinden aşağıdaki şemayı dönmelidir:
+//   { id, name, zone, lat, lng, status, last_seen, gps_status?, satellites?, speed?, battery?, signal? }
+// (last_seen ve sonrasındaki alanlar opsiyoneldir — API göndermezse "Veri yok" gösterilir.)
+const API_ENDPOINT = '/api/oed-devices';
+const USE_MOCK_FALLBACK = true; // backend hazır olana kadar true bırakın
+
+const CACHE_KEY = 'oed_devices_cache_v1';
+
+function cacheDevices(list) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), devices: list }));
+  } catch (_) {}
+}
+
+function readCachedDevices() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.devices) || !parsed.devices.length) return null;
+    return parsed.devices;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function fetchDevices() {
+  try {
+    const res = await fetch(API_ENDPOINT, { cache: 'no-store' });
+    if (!res.ok) throw new Error('API yanıt vermedi: ' + res.status);
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) throw new Error('Boş veri');
+    cacheDevices(data);
+    return data;
+  } catch (err) {
+    console.warn('Gerçek cihaz verisi alınamadı:', err.message);
+    const cached = readCachedDevices();
+    if (cached) {
+      console.warn('Önbellekteki cihaz listesi kullanılıyor.');
+      return cached;
+    }
+    if (USE_MOCK_FALLBACK) {
+      const mock = generateMockDevices();
+      cacheDevices(mock);
+      return mock;
+    }
+    throw err;
+  }
+}
+
+/* ============================================================
+   HAVERSINE MESAFE HESABI — DEĞİŞTİRİLMEDİ
+   ============================================================ */
+function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/* ============================================================
+   YARDIMCI FONKSİYONLAR
+   ============================================================ */
+function formatDistance(meters) {
+  if (meters == null || isNaN(meters)) return 'Veri yok';
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  const km = meters / 1000;
+  return `${km.toFixed(1).replace('.', ',')} km`;
+}
+
+function humanizeTimeAgo(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return null;
+  const diffSec = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (diffSec < 5) return 'az önce';
+  if (diffSec < 60) return `${diffSec} saniye önce`;
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} dakika önce`;
+  const diffHour = Math.round(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} saat önce`;
+  const diffDay = Math.round(diffHour / 24);
+  return `${diffDay} gün önce`;
+}
+
+function statusMeta(status) {
+  switch (status) {
+    case 'active': return { color: '#16a34a', label: 'AKTİF' };
+    case 'delayed': return { color: '#d97706', label: 'GECİKMELİ' };
+    case 'offline': return { color: '#4b5563', label: 'ÇEVRİMDIŞI' };
+    case 'maintenance': return { color: '#ca8a04', label: 'BAKIMDA' };
+    case 'no-location': return { color: '#9ca3af', label: 'KONUM YOK' };
+    default: return { color: '#6b7280', label: status ? String(status).toUpperCase() : 'BİLİNMİYOR' };
+  }
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+function isMobileLayout() {
+  return window.matchMedia('(max-width:768px), (max-height:500px) and (pointer:coarse)').matches;
+}
+
+/* ============================================================
+   UYGULAMA DURUMU
+   ============================================================ */
+let devices = [];
+let userLocation = null;
+let map, userMarker, userAccuracyCircle, deviceMarkers = {};
+let streetLayer, satelliteLayer;
+let currentBaseLayer = 'street';
+
+// Yön oku / pusula durumu
+let lastTargetBearing = null;
+let deviceHeading = null;
+let compassActive = false;
+let compassListenerAttached = false;
+let latestDistances = {};      // id -> mesafe (metre)
+let selectedDeviceId = null;   // null = otomatik (en yakın); bir id = seçili hedef
+let currentDetailId = null;    // detay panelinde açık olan cihaz
+
+let routeLine = null;
+let lastRouteKey = '';
+let lastRouteFetchAt = 0;
+const ROUTE_THROTTLE_MS = 3000;
+
+// Sesli yön + titreşim
+let voiceGuideActive = false;
+let lastSpokenKey = '';
+let lastSpokenAt = 0;
+const VOICE_COOLDOWN_MS = 12000;
+let lastVibrateAt = 0;
+const VIBRATE_NEAR_M = 35;
+const EMERGENCY_PHONE = '112'; // Fabrika iç hat gerekirse burayı değiştirin
+
+/* ---- Mesafe hesaplama yardımcıları ---- */
+function hasValidCoords(d) {
+  return typeof d.lat === 'number' && typeof d.lng === 'number' && !isNaN(d.lat) && !isNaN(d.lng);
+}
+function computeDistances(lat, lng) {
+  return devices
+    .filter(hasValidCoords)
+    .map(d => ({ ...d, distance: haversineDistanceMeters(lat, lng, d.lat, d.lng) }));
+}
+/** Konumlu cihazlar mesafeye göre + konumsuzlar en sonda */
+function buildSortedList(lat, lng) {
+  const withDist = computeDistances(lat, lng).sort((a, b) => a.distance - b.distance);
+  const noLoc = devices
+    .filter(d => !hasValidCoords(d))
+    .map(d => ({ ...d, distance: null }));
+  return withDist.concat(noLoc);
+}
+function pickNearest(withDistance) {
+  if (!withDistance.length) return null;
+  const located = withDistance.filter(d => d.distance != null && !isNaN(d.distance));
+  if (!located.length) return null;
+  const activeOnes = located.filter(d => d.status === 'active');
+  const pool = activeOnes.length > 0 ? activeOnes : located;
+  return [...pool].sort((a, b) => a.distance - b.distance)[0];
+}
+
+function setTarget(id) {
+  selectedDeviceId = id;
+  document.getElementById('reset-target-btn').style.display = id != null ? 'inline-block' : 'none';
+  if (userLocation) updateWithUserLocation(userLocation.lat, userLocation.lng);
+}
+
+/* ============================================================
+   ROTA ÇİZİMİ (YÜRÜYÜŞ YOLU)
+   Ücretsiz halka açık OSRM demo servisini kullanır. Fabrika içi
+   yollar OpenStreetMap'te işaretli değilse rota bulunamayabilir;
+   bu durumda otomatik olarak kesikli düz çizgiye (kuş uçuşu) düşer.
+   Kullanıcı veya cihaz konumu geçersizse hata vermez, sessizce çıkar.
+   ============================================================ */
+async function updateRoute(user, device) {
+  if (!user || !device || typeof device.lat !== 'number' || typeof device.lng !== 'number' || isNaN(device.lat) || isNaN(device.lng)) {
+    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+    renderRouteInfo(null, null, true);
+    return;
+  }
+
+  const key = `${device.id}`;
+  const now = Date.now();
+  const targetChanged = key !== lastRouteKey;
+  if (!targetChanged && now - lastRouteFetchAt < ROUTE_THROTTLE_MS) return;
+  lastRouteFetchAt = now;
+  lastRouteKey = key;
+
+  try {
+    const url = `https://router.project-osrm.org/route/v1/foot/${user.lng},${user.lat};${device.lng},${device.lat}?overview=full&geometries=geojson`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Rota servisi yanıt vermedi');
+    const data = await res.json();
+    if (!data.routes || !data.routes.length) throw new Error('Rota bulunamadı');
+    const route = data.routes[0];
+    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+    drawRouteLine(coords, false);
+    renderRouteInfo(route.distance, route.duration, false);
+  } catch (err) {
+    console.warn('Yürüyüş rotası alınamadı, kuş uçuşu çizgiye düşülüyor:', err.message);
+    drawRouteLine([[user.lat, user.lng], [device.lat, device.lng]], true);
+    renderRouteInfo(null, null, true);
+  }
+}
+
+function drawRouteLine(coords, isFallbackStraight) {
+  if (routeLine) map.removeLayer(routeLine);
+  routeLine = L.polyline(coords, {
+    color: isFallbackStraight ? '#2563eb' : '#e11d2a',
+    weight: isFallbackStraight ? 3 : 5,
+    opacity: 0.85,
+    dashArray: isFallbackStraight ? '8,10' : null,
+    lineCap: 'round',
+    lineJoin: 'round'
+  }).addTo(map);
+}
+
+function renderRouteInfo(distanceMeters, durationSeconds, isFallback) {
+  const el = document.getElementById('banner-route-info');
+  if (isFallback || distanceMeters == null) {
+    el.textContent = 'Kuş uçuşu (yol verisi bulunamadı)';
+  } else {
+    const mins = Math.max(1, Math.round(durationSeconds / 60));
+    el.textContent = `Yürüyüş rotası: ${formatDistance(distanceMeters)} • ~${mins} dk`;
+  }
+}
+
+/* ============================================================
+   HARİTA
+   ============================================================ */
+function oedDivIcon(device, isTarget) {
+  const meta = statusMeta(device.status);
+  const size = isTarget ? 38 : 30;
+  return L.divIcon({
+    className: '',
+    html: `<div class="oed-pin${isTarget ? ' target' : ''}" style="background:${meta.color};width:${size}px;height:${size}px;">${isTarget ? '★' : '+'}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -(size / 2)]
+  });
+}
+
+function userDivIcon() {
+  return L.divIcon({
+    className: 'user-marker-wrap',
+    html: `<div class="user-pin"></div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11]
+  });
+}
+
+/* ============================================================
+   YÖN OKU (BEARING / PUSULA)
+   Kullanıcıdan hedef cihaza olan açıyı (kuzeye göre) hesaplar.
+   Telefon pusulası etkinleştirilmişse ok, telefonun baktığı yöne
+   göre bağıl olarak döner ("bu tarafa yürüyün" gibi); etkin
+   değilse kuzey referanslı yön (K, KD, D...) gösterilir.
+   ============================================================ */
+function computeBearing(lat1, lon1, lat2, lon2) {
+  const toRad = d => d * Math.PI / 180;
+  const toDeg = r => r * 180 / Math.PI;
+  const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+            Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
+  const brng = toDeg(Math.atan2(y, x));
+  return (brng + 360) % 360;
+}
+
+function bearingToCardinal(deg) {
+  const dirs = ['Kuzey', 'Kuzeydoğu', 'Doğu', 'Güneydoğu', 'Güney', 'Güneybatı', 'Batı', 'Kuzeybatı'];
+  return dirs[Math.round(deg / 45) % 8];
+}
+
+function updateDirectionArrow() {
+  const arrow = document.getElementById('direction-arrow');
+  const label = document.getElementById('direction-label');
+  if (!arrow || !label || lastTargetBearing == null) return;
+
+  let rotation = lastTargetBearing;
+  let text = `${bearingToCardinal(lastTargetBearing)} yönünde`;
+
+  if (compassActive && deviceHeading != null) {
+    rotation = (lastTargetBearing - deviceHeading + 360) % 360;
+    text = 'Ok gösterdiği tarafa ilerleyin';
+  }
+  arrow.style.transform = `rotate(${rotation}deg)`;
+  label.textContent = text;
+}
+
+/* ---- Sesli yönlendirme (Web Speech API) ---- */
+function speak(text) {
+  if (!voiceGuideActive || !('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'tr-TR';
+    u.rate = 1.05;
+    u.volume = 1;
+    window.speechSynthesis.speak(u);
+  } catch (_) { /* sessizce yok say */ }
+}
+
+function maybeSpeakGuidance(target) {
+  if (!voiceGuideActive || !target || target.distance == null) return;
+  const now = Date.now();
+  if (now - lastSpokenAt < VOICE_COOLDOWN_MS) return;
+  const meters = Math.round(target.distance);
+  let bucket;
+  if (meters <= 15) bucket = 'here';
+  else if (meters <= 40) bucket = 'near';
+  else if (meters <= 100) bucket = 'mid';
+  else bucket = 'far';
+  const key = `${target.id}-${bucket}`;
+  if (key === lastSpokenKey) return;
+  lastSpokenKey = key;
+  lastSpokenAt = now;
+  const dir = lastTargetBearing != null ? bearingToCardinal(lastTargetBearing) : '';
+  if (bucket === 'here') speak(`${target.name} hemen yakınınızda. Yaklaşık ${meters} metre.`);
+  else if (bucket === 'near') speak(`${target.name}, ${meters} metre ${dir} yönünde.`);
+  else if (bucket === 'mid') speak(`${target.name} yaklaşık ${meters} metre ${dir} yönünde.`);
+  else speak(`En yakın cihaz ${target.name}, ${formatDistance(target.distance)} ${dir} yönünde.`);
+}
+
+function maybeVibrateNear(distance) {
+  if (distance == null || distance > VIBRATE_NEAR_M) return;
+  if (!('vibrate' in navigator)) return;
+  const now = Date.now();
+  if (now - lastVibrateAt < 8000) return;
+  lastVibrateAt = now;
+  try { navigator.vibrate([80, 40, 80]); } catch (_) {}
+}
+
+function safeInvalidateMap() {
+  if (!map) return;
+  try {
+    setTimeout(() => { map.invalidateSize({ animate: false }); }, 280);
+  } catch (_) {}
+}
+
+/* ---- Telefon pusulası (DeviceOrientation) ---- */
+function attachCompassListener() {
+  if (compassListenerAttached) return;
+  compassListenerAttached = true;
+  const handler = (e) => {
+    let heading = null;
+    if (typeof e.webkitCompassHeading === 'number') {
+      heading = e.webkitCompassHeading; // iOS Safari: doğrudan pusula açısı
+    } else if (typeof e.alpha === 'number') {
+      heading = 360 - e.alpha; // Android: alpha'dan yaklaşık pusula açısı
+    }
+    if (heading != null && !isNaN(heading)) {
+      deviceHeading = (heading + 360) % 360;
+      if (compassActive) updateDirectionArrow();
+    }
+  };
+  window.addEventListener('deviceorientationabsolute', handler, true);
+  window.addEventListener('deviceorientation', handler, true);
+}
+
+function requestCompassPermission() {
+  const btn = document.getElementById('compass-btn');
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS 13+: kullanıcı etkileşimi gerektirir
+    DeviceOrientationEvent.requestPermission().then(state => {
+      if (state === 'granted') {
+        attachCompassListener();
+        compassActive = true;
+        btn.textContent = '🧭 Pusulayı Kapat';
+        showToast('Pusula etkinleştirildi.');
+        updateDirectionArrow();
+      } else {
+        showToast('Pusula izni verilmedi.');
+      }
+    }).catch(() => showToast('Pusula başlatılamadı.'));
+  } else if (typeof DeviceOrientationEvent !== 'undefined' || 'ondeviceorientationabsolute' in window) {
+    attachCompassListener();
+    compassActive = true;
+    btn.textContent = '🧭 Pusulayı Kapat';
+    showToast('Pusula etkinleştirildi.');
+    updateDirectionArrow();
+  } else {
+    showToast('Bu cihaz/tarayıcı pusula özelliğini desteklemiyor.');
+  }
+}
+
+function wireCompassButton() {
+  document.getElementById('compass-btn').addEventListener('click', () => {
+    if (compassActive) {
+      compassActive = false;
+      document.getElementById('compass-btn').textContent = '🧭 Pusulayı Aç';
+      updateDirectionArrow();
+    } else {
+      requestCompassPermission();
+    }
+  });
+}
+
+/* ---- Sağ menüyü kodla kapat (liste açılırken üst üste binmesin) ---- */
+function closeControlsPanel() {
+  const wrap = document.getElementById('map-controls-buttons');
+  const btn = document.getElementById('controls-toggle-btn');
+  if (wrap) wrap.classList.add('hidden');
+  if (btn) btn.textContent = '☰';
+}
+
+/* ---- Sağ üst kontrol butonlarını göster/gizle ---- */
+function wireControlsToggle() {
+  const toggleBtn = document.getElementById('controls-toggle-btn');
+  const buttonsWrap = document.getElementById('map-controls-buttons');
+
+  function setControlsOpen(open) {
+    buttonsWrap.classList.toggle('hidden', !open);
+    toggleBtn.textContent = open ? '✕' : '☰';
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    setControlsOpen(buttonsWrap.classList.contains('hidden'));
+  });
+
+  // Mobilde varsayılan kapalı (haritayı kapatmasın), masaüstünde açık başlar
+  setControlsOpen(!isMobileLayout());
+}
+
+/* ---- Sokak / uydu görünümü ---- */
+function wireSatelliteToggle() {
+  document.getElementById('satellite-btn').addEventListener('click', () => {
+    const btn = document.getElementById('satellite-btn');
+    if (currentBaseLayer === 'street') {
+      map.removeLayer(streetLayer);
+      satelliteLayer.addTo(map);
+      currentBaseLayer = 'satellite';
+      btn.textContent = '🗺️ Harita Görünümü';
+    } else {
+      map.removeLayer(satelliteLayer);
+      streetLayer.addTo(map);
+      currentBaseLayer = 'street';
+      btn.textContent = '🛰️ Uydu Görünümü';
+    }
+  });
+}
+
+function initMap() {
+  map = L.map('map', { zoomControl: true }).setView([FACTORY_CENTER.lat, FACTORY_CENTER.lng], 17);
+
+  streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 20,
+    attribution: '&copy; OpenStreetMap katkıda bulunanları'
+  }).addTo(map);
+
+  // Google Earth'e benzer ücretsiz uydu/hava görünümü (Esri World Imagery).
+  // Google'ın kendi uydu katmanı ücretli bir API anahtarı gerektirdiği için
+  // burada lisans gerektirmeyen, ücretsiz bir uydu görüntüsü kaynağı kullanıldı.
+  satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 21,
+    maxNativeZoom: 18,
+    attribution: 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
+  });
+
+  devices.forEach(d => {
+    if (typeof d.lat !== 'number' || typeof d.lng !== 'number' || isNaN(d.lat) || isNaN(d.lng)) {
+      console.warn(`Cihaz #${d.id} için konum verisi geçersiz, harita pini oluşturulamadı.`);
+      return;
+    }
+    const marker = L.marker([d.lat, d.lng], { icon: oedDivIcon(d, false) }).addTo(map);
+    marker.bindPopup(popupHtml(d, null));
+    marker.on('click', () => {
+      setTarget(d.id);
+      openDetailPanel(d.id);
+      if (isMobileLayout()) setTimeout(() => focusMarker(marker, map.getZoom()), 0);
+    });
+    deviceMarkers[d.id] = marker;
+  });
+
+  // Butonların harita sürüklemesini tetiklemesini önle
+  const controlsEl = document.querySelector('.map-controls');
+  if (controlsEl) {
+    L.DomEvent.disableClickPropagation(controlsEl);
+    L.DomEvent.disableScrollPropagation(controlsEl);
+  }
+}
+
+/* Marker'a odaklan. Mobilde detay paneli haritanın alt kısmını kapattığı için
+   marker'ı panelin üstündeki görünür alanın ortasına yerleştirir; popup açmaz. */
+function focusMarker(marker, zoom) {
+  if (!marker || !map) return;
+  const z = zoom || 19;
+  const ll = marker.getLatLng();
+  if (isMobileLayout()) {
+    marker.closePopup();
+    const panel = document.getElementById('detail-panel');
+    const landscape = window.matchMedia('(max-height:500px)').matches;
+    if (panel && panel.classList.contains('open') && !landscape) {
+      const shift = Math.round(panel.offsetHeight / 2);
+      const center = map.unproject(map.project(ll, z).add([0, shift]), z);
+      map.setView(center, z, { animate: true });
+      return;
+    }
+  }
+  map.setView(ll, z, { animate: true });
+  if (!isMobileLayout()) marker.openPopup();
+}
+
+function popupHtml(device, distance) {
+  const meta = statusMeta(device.status);
+  const distText = formatDistance(distance);
+  return `
+    <div class="popup-title">${device.name}</div>
+    <div class="popup-row">${device.zone || 'Bölge bilgisi yok'}</div>
+    <div class="popup-row">Mesafe: <span class="popup-dist">${distText}</span></div>
+    <span class="status-pill" style="background:${meta.color}">${meta.label}</span>
+    <button class="popup-detail-btn" onclick="window.__oedOpenDetail(${device.id})">Detay &amp; Yol Tarifi</button>
+  `;
+}
+window.__oedOpenDetail = function (id) {
+  setTarget(id);
+  openDetailPanel(id);
+};
+
+/* ============================================================
+   CİHAZ LİSTESİ (bottom-sheet içeriği)
+   ============================================================ */
+function renderDeviceList(sorted, targetId) {
+  const listEl = document.getElementById('device-list');
+
+  if (!sorted.length) {
+    listEl.innerHTML = `<div style="padding:20px 16px;color:#64748b;font-size:13px;">Cihaz verisi bulunamadı.</div>`;
+    return;
+  }
+
+  listEl.innerHTML = sorted.map((d) => {
+    const meta = statusMeta(d.status);
+    const selected = d.id === targetId ? ' selected' : '';
+    const noLoc = !hasValidCoords(d);
+    const distHtml = noLoc
+      ? `<div class="dist no-loc-label">KONUM YOK</div>`
+      : `<div class="dist">${formatDistance(d.distance)}</div>`;
+    return `
+    <div class="device-row${selected}${noLoc ? ' no-loc' : ''}" data-id="${d.id}">
+      <div class="idx" style="background:${meta.color};">${String(d.id).padStart(2, '0')}</div>
+      <div class="info">
+        <div class="name">${d.name}</div>
+        <div class="loc">${d.zone || 'Bölge bilgisi yok'}</div>
+      </div>
+      ${distHtml}
+    </div>
+  `;
+  }).join('');
+
+  listEl.querySelectorAll('.device-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const id = Number(row.dataset.id);
+      setTarget(id);
+      openDetailPanel(id);
+      const marker = deviceMarkers[id];
+      if (marker) {
+        focusMarker(marker);
+      }
+      if (isMobileLayout()) applySheetState('collapsed', true);
+    });
+  });
+}
+
+function updateSheetSummary(sorted) {
+  document.getElementById('summary-count').textContent = devices.length || '—';
+  document.getElementById('total-device-count').textContent = devices.length || '—';
+  const nearestEl = document.getElementById('summary-nearest');
+  const nearestLocated = sorted.find(d => d.distance != null);
+  if (!sorted.length) {
+    nearestEl.textContent = 'veri yok';
+  } else if (!nearestLocated) {
+    nearestEl.textContent = 'konum yok';
+  } else {
+    nearestEl.textContent = `${nearestLocated.name} ${formatDistance(nearestLocated.distance)}`;
+  }
+}
+
+/* ============================================================
+   CİHAZ DETAY PANELİ
+   ============================================================ */
+function renderDetailPanel(device, distance) {
+  const meta = statusMeta(device.status);
+  document.getElementById('detail-title').textContent = device.name;
+  document.getElementById('detail-status-dot').style.background = meta.color;
+  document.getElementById('detail-status-label').textContent = meta.label;
+
+  const lastSeenText = humanizeTimeAgo(device.last_seen) || 'Veri yok';
+  const fields = [
+    ['Konum', device.zone || 'Veri yok'],
+    ['Mesafe', formatDistance(distance)],
+    ['Son Görülme', lastSeenText],
+    ['GPS Durumu', device.gps_status ?? 'Veri yok'],
+    ['Uydu', device.satellites != null ? `${device.satellites} uydu` : 'Veri yok'],
+    ['Hız', device.speed != null ? `${device.speed} km/h` : 'Veri yok'],
+    ['Cihaz Bataryası', device.battery != null ? `%${device.battery}` : 'Veri yok'],
+    ['Sinyal', device.signal ?? 'Veri yok'],
+  ];
+  document.getElementById('detail-fields').innerHTML = fields.map(([l, v]) =>
+    `<div class="detail-field${l === 'Konum' ? ' full' : ''}"><span class="flabel">${l}</span><span class="fvalue">${v}</span></div>`
+  ).join('');
+}
+
+function openDetailPanel(id) {
+  const device = devices.find(d => d.id === id);
+  if (!device) { showToast('Cihaz bulunamadı.'); return; }
+  currentDetailId = id;
+  renderDetailPanel(device, latestDistances[id] ?? null);
+  positionDetailPanel();
+  // Mobilde detay paneli ve liste aynı alanı kullanır; birlikte açık kalmasın
+  if (isMobileLayout() && sheetState === 'expanded') applySheetState('collapsed', true);
+  const panel = document.getElementById('detail-panel');
+  panel.classList.add('open');
+  panel.setAttribute('aria-hidden', 'false');
+}
+
+/* Masaüstünde sağ panel, üstteki kırmızı başlık + durum şeridinin ÜZERİNE binmesin */
+function positionDetailPanel() {
+  const wrap = document.getElementById('map-wrap');
+  if (!wrap) return;
+  const top = isMobileLayout() ? 0 : Math.max(0, Math.round(wrap.getBoundingClientRect().top));
+  document.documentElement.style.setProperty('--detail-top', top + 'px');
+}
+window.addEventListener('resize', positionDetailPanel);
+
+function closeDetailPanel() {
+  currentDetailId = null;
+  const panel = document.getElementById('detail-panel');
+  panel.classList.remove('open');
+  panel.setAttribute('aria-hidden', 'true');
+}
+
+function refreshOpenDetailIfNeeded() {
+  if (currentDetailId == null) return;
+  const device = devices.find(d => d.id === currentDetailId);
+  if (!device) { closeDetailPanel(); return; }
+  renderDetailPanel(device, latestDistances[currentDetailId] ?? null);
+}
+
+/* ============================================================
+   KONUM GÜNCELLEME — ANA MANTIK
+   ============================================================ */
+function updateWithUserLocation(lat, lng, accuracy) {
+  try {
+    userLocation = { lat, lng };
+
+    if (!userMarker) {
+      userMarker = L.marker([lat, lng], { icon: userDivIcon(), zIndexOffset: 1000 }).addTo(map);
+      userMarker.bindPopup('Şu anki konumunuz');
+    } else {
+      userMarker.setLatLng([lat, lng]);
+    }
+
+    if (typeof accuracy === 'number' && !isNaN(accuracy)) {
+      if (!userAccuracyCircle) {
+        userAccuracyCircle = L.circle([lat, lng], {
+          radius: accuracy,
+          color: '#2563eb',
+          weight: 1,
+          fillColor: '#2563eb',
+          fillOpacity: 0.12
+        }).addTo(map);
+      } else {
+        userAccuracyCircle.setLatLng([lat, lng]);
+        userAccuracyCircle.setRadius(accuracy);
+      }
+      const accEl = document.getElementById('gps-accuracy');
+      const roundedAcc = Math.round(accuracy);
+      accEl.textContent = `±${roundedAcc} m doğruluk`;
+      accEl.style.color = accuracy > 50 ? '#fca5a5' : '#c7d2e0';
+    }
+
+    const withDistance = computeDistances(lat, lng);
+    latestDistances = Object.fromEntries(withDistance.map(d => [d.id, d.distance]));
+    const sorted = buildSortedList(lat, lng);
+
+    document.getElementById('last-update').textContent = 'Son güncelleme: ' + new Date().toLocaleTimeString('tr-TR');
+    document.getElementById('gps-status').innerHTML = '<span class="dot dot-live"></span>Canlı konum aktif';
+
+    if (!withDistance.length) {
+      document.getElementById('banner-device-name').textContent = 'Konumlu cihaz yok';
+      document.getElementById('banner-distance').textContent = '—';
+      document.getElementById('banner-route-info').textContent = '';
+      renderDeviceList(sorted, null);
+      updateSheetSummary(sorted);
+      return;
+    }
+
+    const nearest = pickNearest(withDistance);
+    let manualTarget = null;
+    if (selectedDeviceId != null) {
+      manualTarget = withDistance.find(d => d.id === selectedDeviceId) || null;
+      // Konumsuz seçilmişse hedef olarak kullanma; otomatik moda dön
+      if (!manualTarget) {
+        const raw = devices.find(d => d.id === selectedDeviceId);
+        if (!raw || !hasValidCoords(raw)) {
+          selectedDeviceId = null;
+          document.getElementById('reset-target-btn').style.display = 'none';
+        }
+      }
+    }
+    const target = manualTarget || nearest;
+    if (!target) {
+      renderDeviceList(sorted, null);
+      updateSheetSummary(sorted);
+      return;
+    }
+
+    document.getElementById('banner-label').textContent = manualTarget ? 'SEÇİLİ HEDEF' : 'EN YAKIN OED CİHAZI';
+    document.getElementById('banner-device-name').textContent = `${target.name} — ${target.zone || ''}`;
+    document.getElementById('banner-distance').textContent = formatDistance(target.distance);
+    document.getElementById('banner').classList.toggle('pulse', target.distance > 60);
+
+    devices.forEach(d => {
+      const marker = deviceMarkers[d.id];
+      if (!marker) return;
+      const isTarget = d.id === target.id;
+      marker.setIcon(oedDivIcon(d, isTarget));
+      const distForDevice = latestDistances[d.id] ?? null;
+      marker.setPopupContent(popupHtml(d, distForDevice));
+    });
+
+    renderDeviceList(sorted, target.id);
+    updateSheetSummary(sorted);
+    refreshOpenDetailIfNeeded();
+    if (hasValidCoords(target)) {
+      lastTargetBearing = computeBearing(lat, lng, target.lat, target.lng);
+      updateDirectionArrow();
+      maybeSpeakGuidance(target);
+      maybeVibrateNear(target.distance);
+    } else {
+      lastTargetBearing = null;
+      document.getElementById('direction-label').textContent = 'Yön hesaplanamıyor (konum verisi yok)';
+    }
+    updateRoute({ lat, lng }, target);
+  } catch (err) {
+    console.error('Konum güncellenirken hata oluştu:', err);
+    showToast('Bir hata oluştu, mevcut veriler korunuyor.');
+  }
+}
+
+/* ============================================================
+   GEOLOCATION
+   ============================================================ */
+function friendlyGeoError(err) {
+  switch (err.code) {
+    case err.PERMISSION_DENIED: return 'Konum izni verilmedi. Tarayıcı ayarlarından izin verin.';
+    case err.POSITION_UNAVAILABLE: return 'Konum bilgisi şu anda alınamıyor.';
+    case err.TIMEOUT: return 'Konum alma işlemi zaman aşımına uğradı.';
+    default: return 'Konum alınamadı.';
+  }
+}
+
+function startGeolocationWatch() {
+  if (!('geolocation' in navigator)) {
+    document.getElementById('gps-status').innerHTML = '<span class="dot dot-off"></span>Bu tarayıcı konum servisini desteklemiyor';
+    showToast('Tarayıcınız konum servisini desteklemiyor.');
+    return;
+  }
+
+  navigator.geolocation.watchPosition(
+    (pos) => updateWithUserLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+    (err) => {
+      document.getElementById('gps-status').innerHTML = '<span class="dot dot-off"></span>' + friendlyGeoError(err);
+      showToast(friendlyGeoError(err));
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+  );
+}
+
+/* ============================================================
+   CİHAZ VERİSİ
+   Cihaz konumları sabittir (Excel listesinden alınmıştır), bu
+   yüzden periyodik konum tazeleme YAPILMAZ — sadece kullanıcının
+   kendi konumu canlı takip edilir (bkz. startGeolocationWatch).
+   API bağlandığında ve cihaz durumu (aktif/bakımda vb.) zaman
+   zaman değişebileceği düşünülürse, ihtiyaç halinde burada tekrar
+   bir tazeleme döngüsü eklenebilir.
+   ============================================================ */
+
+/* ============================================================
+   MOBİL BOTTOM-SHEET (SÜRÜKLEME)
+   ============================================================ */
+const COLLAPSED_VISIBLE_PX = 44; /* kapalıyken yalnızca ince tutamak şeridi */
+let sheetState = 'collapsed';
+let dragState = null;
+const sheetEl = () => document.getElementById('sheet');
+
+function measureSheetHeight() {
+  return sheetEl().getBoundingClientRect().height;
+}
+function collapsedOffsetPx() {
+  return Math.max(0, measureSheetHeight() - COLLAPSED_VISIBLE_PX);
+}
+function applySheetState(state, animate) {
+  const wasExpanded = sheetState === 'expanded';
+  sheetState = state;
+  if (state === 'expanded' && !wasExpanded) {
+    closeDetailPanel();
+    if (isMobileLayout()) closeControlsPanel();
+  }
+  const sheet = sheetEl();
+  sheet.style.transition = animate ? 'transform .25s ease' : 'none';
+  const offset = state === 'collapsed' ? collapsedOffsetPx() : 0;
+  sheet.style.transform = `translateY(${offset}px)`;
+  // Sağdaki menü/atıf/bildirim, listenin görünen kısmının üstünde kalsın (üst üste binmesin)
+  const visible = isMobileLayout() ? (state === 'collapsed' ? COLLAPSED_VISIBLE_PX : measureSheetHeight()) : 0;
+  document.documentElement.style.setProperty('--sheet-visible', Math.round(visible) + 'px');
+  if (animate) setTimeout(() => { sheet.style.transition = ''; }, 260);
+  const btn = document.getElementById('list-toggle-btn');
+  if (btn) btn.textContent = state === 'expanded' ? '📋 Cihazları Gizle' : '📋 Cihazları Göster';
+  safeInvalidateMap();
+}
+
+function initSheetDrag() {
+  const handle = document.getElementById('sheet-handle');
+  const sheet = sheetEl();
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (!isMobileLayout()) return;
+    const maxOffset = collapsedOffsetPx();
+    dragState = {
+      startY: e.clientY,
+      startOffset: sheetState === 'collapsed' ? maxOffset : 0,
+      maxOffset,
+      lastOffset: sheetState === 'collapsed' ? maxOffset : 0,
+      moved: 0
+    };
+    sheet.style.transition = 'none';
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragState) return;
+    const delta = e.clientY - dragState.startY;
+    dragState.moved = Math.abs(delta);
+    let next = dragState.startOffset + delta;
+    next = Math.min(dragState.maxOffset, Math.max(0, next));
+    dragState.lastOffset = next;
+    sheet.style.transform = `translateY(${next}px)`;
+  });
+
+  const endDrag = () => {
+    if (!dragState) return;
+    const { lastOffset, maxOffset, moved } = dragState;
+    dragState = null;
+    if (moved < 6) {
+      // Tıklama gibi davran: durumu tersine çevir
+      applySheetState(sheetState === 'collapsed' ? 'expanded' : 'collapsed', true);
+      return;
+    }
+    const shouldCollapse = lastOffset > maxOffset * 0.35;
+    applySheetState(shouldCollapse ? 'collapsed' : 'expanded', true);
+  };
+  handle.addEventListener('pointerup', endDrag);
+  handle.addEventListener('pointercancel', endDrag);
+
+  window.addEventListener('resize', () => {
+    if (!isMobileLayout()) {
+      sheet.style.transform = '';
+      sheet.style.transition = '';
+    } else {
+      applySheetState(sheetState, false);
+    }
+    safeInvalidateMap();
+  });
+}
+
+function wireEmergencyControls() {
+  document.getElementById('emergency-call-btn').addEventListener('click', () => {
+    // Mobilde tel: şeması aramayı başlatır; masaüstünde bilgilendirir
+    if (isMobileLayout() || /Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      window.location.href = `tel:${EMERGENCY_PHONE}`;
+    } else {
+      showToast(`Acil numara: ${EMERGENCY_PHONE} — telefondan arayın.`);
+    }
+  });
+
+  const voiceBtn = document.getElementById('voice-guide-btn');
+  voiceBtn.addEventListener('click', () => {
+    if (!('speechSynthesis' in window)) {
+      showToast('Bu tarayıcı sesli yönlendirmeyi desteklemiyor.');
+      return;
+    }
+    voiceGuideActive = !voiceGuideActive;
+    voiceBtn.classList.toggle('on', voiceGuideActive);
+    voiceBtn.textContent = voiceGuideActive ? '🔊 Ses Açık' : '🔊 Sesli Yön';
+    if (voiceGuideActive) {
+      lastSpokenKey = '';
+      lastSpokenAt = 0;
+      speak('Sesli yönlendirme açıldı.');
+      showToast('Sesli yönlendirme açık.');
+    } else {
+      try { window.speechSynthesis.cancel(); } catch (_) {}
+      showToast('Sesli yönlendirme kapatıldı.');
+    }
+  });
+}
+
+/** ?target=14 gibi deep-link ile belirli cihaza odaklan */
+function applyDeepLink() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get('target');
+    if (t == null || t === '') return;
+    const id = Number(t);
+    if (!Number.isFinite(id)) return;
+    const device = devices.find(d => d.id === id);
+    if (!device) return;
+    setTarget(id);
+    openDetailPanel(id);
+    if (hasValidCoords(device) && deviceMarkers[id]) focusMarker(deviceMarkers[id]);
+  } catch (_) {}
+}
+
+/* ============================================================
+   HARİTA KONTROL BUTONLARI
+   ============================================================ */
+function wireMapControls() {
+  document.getElementById('locate-btn').addEventListener('click', () => {
+    if (!userLocation) {
+      showToast('Konum henüz alınamadı. GPS erişimine izin verdiğinizden emin olun.');
+      return;
+    }
+    map.setView([userLocation.lat, userLocation.lng], 18, { animate: true });
+    if (userMarker) userMarker.openPopup();
+  });
+
+  document.getElementById('nearest-btn').addEventListener('click', () => {
+    if (!userLocation) { showToast('Önce konumunuzun alınmasını bekleyin (GPS).'); return; }
+    const withDistance = computeDistances(userLocation.lat, userLocation.lng);
+    const nearest = pickNearest(withDistance);
+    if (!nearest) { showToast('Aktif cihaz bulunamadı.'); return; }
+    setTarget(nearest.id);
+    openDetailPanel(nearest.id);
+    const marker = deviceMarkers[nearest.id];
+    if (marker) {
+      focusMarker(marker);
+    }
+  });
+}
+
+function wireDetailPanel() {
+  document.getElementById('detail-close').addEventListener('click', closeDetailPanel);
+
+  document.getElementById('detail-show-map').addEventListener('click', () => {
+    if (currentDetailId == null) return;
+    const marker = deviceMarkers[currentDetailId];
+    if (marker) {
+      focusMarker(marker);
+    } else {
+      showToast('Bu cihazın konum bilgisi bulunamadı.');
+    }
+  });
+
+  document.getElementById('detail-route').addEventListener('click', () => {
+    if (currentDetailId == null) return;
+    if (!userLocation) {
+      showToast('Konumunuz alınamadan yol tarifi başlatılamıyor. GPS bekleniyor…');
+      return;
+    }
+    setTarget(currentDetailId);
+    showToast('Yol tarifi haritada gösteriliyor.');
+  });
+}
+
+function isListOpen() {
+  if (isMobileLayout()) return sheetState === 'expanded';
+  return !document.getElementById('sheet-body').classList.contains('list-collapsed');
+}
+
+function setListOpen(open) {
+  const btn = document.getElementById('list-toggle-btn');
+  if (isMobileLayout()) {
+    applySheetState(open ? 'expanded' : 'collapsed', true);
+  } else {
+    const body = document.getElementById('sheet-body');
+    const header = document.getElementById('sheet-list-header');
+    body.classList.toggle('list-collapsed', !open);
+    header.classList.toggle('collapsed', !open);
+  }
+  btn.textContent = open ? '📋 Cihazları Gizle' : '📋 Cihazları Göster';
+}
+
+function wireListToggle() {
+  const header = document.getElementById('sheet-list-header');
+  const toggleBtn = document.getElementById('list-toggle-btn');
+
+  // Liste AÇILIRKEN sağdaki detay paneli otomatik kapanır
+  const toggleList = () => {
+    const willOpen = !isListOpen();
+    if (willOpen) {
+      closeDetailPanel();
+      if (isMobileLayout()) closeControlsPanel();
+    }
+    setListOpen(willOpen);
+  };
+  header.addEventListener('click', toggleList);
+  toggleBtn.addEventListener('click', toggleList);
+
+  // Görünüm masaüstü/mobil arası değiştiğinde buton metnini senkron tut
+  window.addEventListener('resize', () => setListOpen(isListOpen()));
+}
+
+/* ============================================================
+   PWA — Service Worker + Ana ekrana ekle
+   HTTPS (veya localhost) gerekir. file:// ile SW çalışmaz.
+   ============================================================ */
+let deferredInstallPrompt = null;
+
+function isStandalonePwa() {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true
+  );
+}
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  // file:// veya güvensiz bağlamda deneme
+  if (!window.isSecureContext) {
+    console.warn('PWA: güvenli bağlam (HTTPS/localhost) gerekli.');
+    return;
+  }
+  const swUrl = new URL('sw.js', window.location.href).href;
+  navigator.serviceWorker
+    .register(swUrl, { scope: new URL('./', window.location.href).pathname })
+    .then((reg) => {
+      console.info('PWA: service worker kayıtlı', reg.scope);
+      reg.addEventListener('updatefound', () => {
+        const worker = reg.installing;
+        if (!worker) return;
+        worker.addEventListener('statechange', () => {
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+            showToast('Uygulama güncellendi. Yenilemeniz yeterli.');
+          }
+        });
+      });
+    })
+    .catch((err) => console.warn('PWA SW kayıt hatası:', err.message));
+}
+
+function wirePwaInstall() {
+  const bar = document.getElementById('pwa-install-bar');
+  const btn = document.getElementById('pwa-install-btn');
+  const dismiss = document.getElementById('pwa-install-dismiss');
+  if (!bar || !btn || !dismiss) return;
+
+  const DISMISS_KEY = 'oed_pwa_install_dismissed';
+  const dismissed = (() => {
+    try { return localStorage.getItem(DISMISS_KEY) === '1'; } catch (_) { return false; }
+  })();
+
+  if (isStandalonePwa() || dismissed) {
+    bar.classList.remove('show');
+    return;
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    bar.classList.add('show');
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    bar.classList.remove('show');
+    showToast('İsdemir OED Konum ana ekrana eklendi.');
+  });
+
+  btn.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) {
+      // iOS / desteklemeyen tarayıcılar: kısa rehber
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        showToast('Safari’de Paylaş → Ana Ekrana Ekle');
+      } else {
+        showToast('Tarayıcı menüsünden “Uygulamayı yükle / Ana ekrana ekle”yi seçin.');
+      }
+      return;
+    }
+    deferredInstallPrompt.prompt();
+    try {
+      const choice = await deferredInstallPrompt.userChoice;
+      if (choice && choice.outcome === 'accepted') {
+        bar.classList.remove('show');
+      }
+    } catch (_) {}
+    deferredInstallPrompt = null;
+  });
+
+  dismiss.addEventListener('click', () => {
+    bar.classList.remove('show');
+    try { localStorage.setItem(DISMISS_KEY, '1'); } catch (_) {}
+  });
+
+  // iOS'ta beforeinstallprompt yok; kısa bir kez ipucu (sadece mobil Safari)
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (isIOS && !isStandalonePwa() && !dismissed) {
+    setTimeout(() => {
+      if (!deferredInstallPrompt) bar.classList.add('show');
+    }, 4000);
+  }
+}
+
+/* ============================================================
+   BAŞLANGIÇ
+   ============================================================ */
+async function boot() {
+  devices = await fetchDevices();
+  initMap();
+  renderDeviceList(devices.map(d => ({ ...d, distance: null })), null);
+  updateSheetSummary([]);
+  document.getElementById('total-device-count').textContent = devices.length || '—';
+
+  startGeolocationWatch();
+
+  document.getElementById('reset-target-btn').addEventListener('click', () => setTarget(null));
+  wireMapControls();
+  wireDetailPanel();
+  wireListToggle();
+  wireSatelliteToggle();
+  wireCompassButton();
+  wireControlsToggle();
+  wireEmergencyControls();
+  initSheetDrag();
+  setListOpen(!isMobileLayout());
+  applyDeepLink();
+
+  // Manifest kısayolu: ?nearest=1
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('nearest') === '1') {
+      // GPS geldikten sonra en yakına odaklanmak için butonu tetikle
+      const tryNearest = () => {
+        if (!userLocation) return false;
+        document.getElementById('nearest-btn')?.click();
+        return true;
+      };
+      if (!tryNearest()) {
+        let n = 0;
+        const t = setInterval(() => {
+          if (tryNearest() || ++n > 20) clearInterval(t);
+        }, 500);
+      }
+    }
+  } catch (_) {}
+
+  // İlk layout sonrası harita boyutunu düzelt (mobil sheet / safe-area)
+  safeInvalidateMap();
+  window.addEventListener('orientationchange', () => safeInvalidateMap());
+
+  registerServiceWorker();
+  wirePwaInstall();
+}
+
+boot();
+</script>
+</body>
+</html>
